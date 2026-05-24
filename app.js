@@ -3036,33 +3036,55 @@ async function handleFile(file) {
   }
 }
 
-function fitModel() {
+function getModelSizeForFit() {
+  try {
+    const dimensions = typeof modelViewer.getDimensions === "function" ? modelViewer.getDimensions() : null;
+    const center = typeof modelViewer.getBoundingBoxCenter === "function" ? modelViewer.getBoundingBoxCenter() : null;
+    const width = Math.abs(parseNumber(dimensions?.x, 0));
+    const height = Math.abs(parseNumber(dimensions?.y, 0));
+    const depth = Math.abs(parseNumber(dimensions?.z, 0));
+    const hasSize = width > 0.001 || height > 0.001 || depth > 0.001;
+    return {
+      center: center || { x: 0, y: 0, z: 0 },
+      width,
+      height,
+      depth,
+      hasSize,
+    };
+  } catch {
+    return {
+      center: { x: 0, y: 0, z: 0 },
+      width: 0,
+      height: 0,
+      depth: 0,
+      hasSize: false,
+    };
+  }
+}
+
+function fitModel(attempt = 0) {
   requestAnimationFrame(async () => {
     try {
       if (modelViewer.updateComplete) await modelViewer.updateComplete;
 
-      const fov = 35;
-      let center = null;
-      let dimensions = null;
-
-      if (typeof modelViewer.getBoundingBoxCenter === "function") {
-        center = modelViewer.getBoundingBoxCenter();
-      }
-      if (typeof modelViewer.getDimensions === "function") {
-        dimensions = modelViewer.getDimensions();
+      const size = getModelSizeForFit();
+      if (!size.hasSize && attempt < 12) {
+        fitModel(attempt + 1);
+        return;
       }
 
-      const target = center || { x: 0, y: 0, z: 0 };
-      const width = Math.abs(parseNumber(dimensions?.x, 1));
-      const height = Math.abs(parseNumber(dimensions?.y, 1));
-      const depth = Math.abs(parseNumber(dimensions?.z, 1));
+      const fov = 28;
+      const target = size.center;
+      const width = size.hasSize ? size.width : 1;
+      const height = size.hasSize ? size.height : 1;
+      const depth = size.hasSize ? size.depth : 1;
       const diagonal = Math.max(Math.hypot(width, height, depth), 1);
       const aspect = Math.max(modelViewer.clientWidth / Math.max(modelViewer.clientHeight, 1), 0.6);
-      const verticalFitRadius = (height * 0.65) / Math.tan((fov * Math.PI) / 360);
-      const horizontalFitRadius = ((Math.max(width, depth) * 0.65) / Math.tan((fov * Math.PI) / 360)) / aspect;
-      const radius = Math.max(diagonal * 0.95, verticalFitRadius, horizontalFitRadius, 2);
+      const verticalFitRadius = (height * 0.85) / Math.tan((fov * Math.PI) / 360);
+      const horizontalFitRadius = ((Math.max(width, depth) * 0.85) / Math.tan((fov * Math.PI) / 360)) / aspect;
+      const radius = Math.max(diagonal * 1.55, verticalFitRadius, horizontalFitRadius, 3);
       const yaw = 0;
-      const pitch = 75;
+      const pitch = 72;
 
       modelViewer.fieldOfView = `${fov}deg`;
       modelViewer.cameraTarget = `${target.x.toFixed(3)}m ${target.y.toFixed(3)}m ${target.z.toFixed(3)}m`;
@@ -3540,6 +3562,20 @@ window.addEventListener("keydown", (event) => {
     }
   }
 });
+
+document.addEventListener("keydown", (event) => {
+  const target = event.target;
+  const isTypingTarget = target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target?.isContentEditable;
+
+  if (!isTypingTarget && event.code === "KeyF") {
+    event.preventDefault();
+    event.stopPropagation();
+    fitModel();
+  }
+}, true);
 
 document.addEventListener("fullscreenchange", () => {
   if (!document.fullscreenElement && document.body.classList.contains("preview-mode")) {
