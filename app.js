@@ -3037,14 +3037,36 @@ async function handleFile(file) {
 }
 
 function fitModel() {
-  modelViewer.removeAttribute("camera-orbit");
-  modelViewer.removeAttribute("camera-target");
-  modelViewer.removeAttribute("field-of-view");
-
   requestAnimationFrame(async () => {
     try {
       if (modelViewer.updateComplete) await modelViewer.updateComplete;
-      if (typeof modelViewer.updateFraming === "function") modelViewer.updateFraming();
+
+      const fov = 35;
+      let center = null;
+      let dimensions = null;
+
+      if (typeof modelViewer.getBoundingBoxCenter === "function") {
+        center = modelViewer.getBoundingBoxCenter();
+      }
+      if (typeof modelViewer.getDimensions === "function") {
+        dimensions = modelViewer.getDimensions();
+      }
+
+      const target = center || { x: 0, y: 0, z: 0 };
+      const width = Math.abs(parseNumber(dimensions?.x, 1));
+      const height = Math.abs(parseNumber(dimensions?.y, 1));
+      const depth = Math.abs(parseNumber(dimensions?.z, 1));
+      const diagonal = Math.max(Math.hypot(width, height, depth), 1);
+      const aspect = Math.max(modelViewer.clientWidth / Math.max(modelViewer.clientHeight, 1), 0.6);
+      const verticalFitRadius = (height * 0.65) / Math.tan((fov * Math.PI) / 360);
+      const horizontalFitRadius = ((Math.max(width, depth) * 0.65) / Math.tan((fov * Math.PI) / 360)) / aspect;
+      const radius = Math.max(diagonal * 0.95, verticalFitRadius, horizontalFitRadius, 2);
+      const yaw = 0;
+      const pitch = 75;
+
+      modelViewer.fieldOfView = `${fov}deg`;
+      modelViewer.cameraTarget = `${target.x.toFixed(3)}m ${target.y.toFixed(3)}m ${target.z.toFixed(3)}m`;
+      modelViewer.cameraOrbit = `${yaw}deg ${pitch}deg ${radius.toFixed(3)}m`;
       if (typeof modelViewer.jumpCameraToGoal === "function") modelViewer.jumpCameraToGoal();
 
       const orbit = modelViewer.getCameraOrbit();
@@ -3060,23 +3082,23 @@ function fitModel() {
         };
       }
 
-      const target = modelViewer.getCameraTarget();
-      if (target) {
-        inputs.targetX.value = target.x.toFixed(2);
-        inputs.targetY.value = target.y.toFixed(2);
-        inputs.targetZ.value = target.z.toFixed(2);
+      const liveTarget = modelViewer.getCameraTarget();
+      if (liveTarget) {
+        inputs.targetX.value = liveTarget.x.toFixed(2);
+        inputs.targetY.value = liveTarget.y.toFixed(2);
+        inputs.targetZ.value = liveTarget.z.toFixed(2);
         
-        state.defaultCamera.target = { x: target.x, y: target.y, z: target.z };
+        state.defaultCamera.target = { x: liveTarget.x, y: liveTarget.y, z: liveTarget.z };
       }
 
-      const fov = modelViewer.getFieldOfView();
-      if (fov) {
-        const lens = fovToLens(fov);
+      const liveFov = modelViewer.getFieldOfView();
+      if (liveFov) {
+        const lens = fovToLens(liveFov);
         inputs.lens.value = Math.round(lens);
         if (lensReadout) lensReadout.textContent = `${Math.round(lens)}mm`;
-        if (fovReadout) fovReadout.textContent = `${fov.toFixed(1)}deg FOV`;
+        if (fovReadout) fovReadout.textContent = `${liveFov.toFixed(1)}deg FOV`;
         
-        state.defaultCamera.fov = fov;
+        state.defaultCamera.fov = liveFov;
         state.defaultCamera.lens = lens;
       }
     } catch (e) {
