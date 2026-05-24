@@ -1,0 +1,29 @@
+{
+  "duration": 6.0,
+  "shakeEnabled": true,
+  "shakeIntensity": 0.35,
+  "shakeSpeed": 2.5,
+  "keyframes": [
+    {
+      "time": 0,
+      "position": { "x": 2.5, "y": 1.4, "z": 3.5 },
+      "target": { "x": 0, "y": 0, "z": 0 },
+      "lens": 35,
+      "shake": 0.2
+    },
+    {
+      "time": 2.5,
+      "orbit": { "yaw": 80, "pitch": 68, "radius": 3.2 },
+      "target": { "x": 0, "y": 0.15, "z": 0 },
+      "lens": 50,
+      "shake": 0.35
+    },
+    {
+      "time": 5,
+      "position": { "x": -3, "y": 1.2, "z": 2 },
+      "target": { "x": 0, "y": 0.1, "z": 0 },
+      "lens": 28,
+      "shake": 0.15
+    }
+  ]
+}

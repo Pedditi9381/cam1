@@ -1,0 +1,10 @@
+{
+  "Front detail": {
+    "position": { "x": 0, "y": 0.4, "z": 0.8 },
+    "keyframes": [30, 60, 120]
+  },
+  "Side profile": {
+    "position": { "x": 0.7, "y": 0.2, "z": 0 },
+    "keyframes": [90, 150]
+  }
+}

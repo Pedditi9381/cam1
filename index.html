@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Camera Animation Tool</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="manifest" href="./manifest.json" />
+    <script
+      type="module"
+      src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.3.0/model-viewer.min.js"
+    ></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js")
+            .then((reg) => console.log("Service Worker registered!"))
+            .catch((err) => console.log("Service Worker registration failed:", err));
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <section id="importScreen" class="import-screen" aria-label="Import project files">
+      <div class="import-header">
+        <h1>Camera Animation Tool</h1>
+        <p>Import your scene files before opening the editor.</p>
+      </div>
+
+      <div class="import-grid">
+        <label class="import-card primary-import">
+          <div class="card-icon-wrapper">
+            <!-- GLB/GLTF Cube Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          </div>
+          <strong>Import GLB / GLTF</strong>
+          <span id="startModelStatus">Required for model preview</span>
+          <input id="startModelInput" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" />
+        </label>
+
+        <label class="import-card">
+          <div class="card-icon-wrapper">
+            <!-- Camera JSON Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          </div>
+          <strong>Import Camera JSON</strong>
+          <span id="startCameraStatus">Optional keyframes</span>
+          <input id="startCameraInput" type="file" accept=".json,application/json" />
+        </label>
+
+        <label class="import-card">
+          <div class="card-icon-wrapper">
+            <!-- Label JSON Tag Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+          </div>
+          <strong>Import Labels JSON</strong>
+          <span id="startLabelStatus">Optional labels</span>
+          <input id="startLabelInput" type="file" accept=".json,application/json" />
+        </label>
+
+        <label class="import-card">
+          <div class="card-icon-wrapper">
+            <!-- Audio Music Note Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+          </div>
+          <strong>Import Audio</strong>
+          <span id="startAudioStatus">Optional audio track</span>
+          <input id="startAudioInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg" />
+        </label>
+      </div>
+
+      <div class="import-actions">
+        <button id="enterEditorButton" type="button">Open Editor</button>
+        <button id="skipImportButton" type="button">Skip For Now</button>
+      </div>
+    </section>
+
+    <main class="app-shell panel-closed">
+      <button id="sidebarDrawerHandle" class="sidebar-drawer-handle" type="button" title="Toggle details panel">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+      <section class="viewer-panel" aria-label="3D model preview">
+        <div class="viewer-toolbar">
+          <div>
+            <h1>Camera Animation Tool</h1>
+            <p id="statusText">Load a GLB or GLTF model to begin.</p>
+          </div>
+          <div class="toolbar-actions">
+            <details class="menu-dropdown">
+              <summary>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h5l2 3h11v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M3 7V5a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v2"></path></svg>
+                <span>Import</span>
+              </summary>
+              <div class="menu-content">
+                <label class="menu-file-item">
+                  <span>Open Working File</span>
+                  <input id="projectInput" type="file" accept=".json,application/json" />
+                </label>
+                <button id="saveProjectButton" class="menu-action" type="button">
+                  <span>Save Working File</span>
+                </button>
+                <label class="menu-file-item">
+                  <span>Import Model GLB/GLTF</span>
+                  <input id="modelInput" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" />
+                </label>
+                <label class="menu-file-item">
+                  <span>Import Camera JSON</span>
+                  <input id="cameraInput" type="file" accept=".json,application/json" />
+                </label>
+                <label class="menu-file-item">
+                  <span>Import Labels JSON</span>
+                  <input id="labelInput" type="file" accept=".json,application/json" />
+                </label>
+                <label class="menu-file-item">
+                  <span>Import Audio</span>
+                  <input id="audioInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg" />
+                </label>
+              </div>
+            </details>
+            <details class="menu-dropdown">
+              <summary>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                <span>Details</span>
+              </summary>
+              <div class="menu-content compact">
+                <button id="sideToggleButton" class="menu-action side-toggle" type="button" aria-expanded="false" aria-controls="controlPanel">
+                  <span>Open Controls</span>
+                </button>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="viewer-overlay-actions" aria-label="Viewer actions">
+          <button id="previewModeButton" type="button" title="Preview animation fullscreen">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"></rect><path d="M8 21h8"></path><path d="M12 18v3"></path><polygon points="10 8 16 11 10 14 10 8"></polygon></svg>
+          </button>
+          <button id="fitModelButton" type="button" title="Fit model">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 9v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12"></path></svg>
+          </button>
+          <button id="resetCameraButton" type="button" title="Reset camera">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+          </button>
+        </div>
+
+        <model-viewer
+          id="modelViewer"
+          camera-controls
+          interaction-prompt="none"
+          exposure="1"
+          shadow-intensity="0.75"
+          disable-tap
+          min-camera-orbit="auto auto 0m"
+          max-camera-orbit="auto auto Infinity"
+          ar
+        ></model-viewer>
+
+        <div id="dropOverlay" class="drop-overlay" hidden>
+          <strong>Drop files to load</strong>
+          <span>GLB/GLTF, camera JSON, or label JSON</span>
+        </div>
+
+        <div id="cursorImportMenu" class="cursor-import-menu" hidden>
+          <button type="button" data-import-target="project">Open Working File</button>
+          <button type="button" data-import-target="model">Import Model GLB/GLTF</button>
+          <button type="button" data-import-target="camera">Import Camera JSON</button>
+          <button type="button" data-import-target="labels">Import Labels JSON</button>
+          <button type="button" data-import-target="audio">Import Audio</button>
+        </div>
+
+        <section class="timeline-panel" aria-label="Camera timeline">
+          <div class="timeline-header">
+            <div class="timeline-header-left">
+              <strong>Camera Timeline</strong>
+              <div class="timeline-toggles">
+                <button id="snapToggleButton" class="magnet-toggle" type="button" title="Snap timeline to 5-frame steps" aria-label="Snap timeline to 5-frame steps" aria-pressed="false">
+                  <!-- Magnet SVG -->
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12a6 6 0 0 0 12 0V3"></path><path d="M18 7H6"></path><path d="M18 11H6"></path></svg>
+                </button>
+                <button id="loopToggleButton" class="magnet-toggle" type="button" title="Loop playback" aria-label="Loop playback" aria-pressed="false">
+                  <!-- Loop SVG -->
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="timeline-header-center">
+              <div class="transport-controls" aria-label="Timeline transport controls">
+                <button id="firstFrameButton" class="icon-button-sq" type="button" title="Go to first frame">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>
+                </button>
+                <button id="prevKeyframeButton" class="icon-button-sq" type="button" title="Previous frame">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <button id="timelineToggleButton" class="icon-button play-icon" type="button" title="Play or pause timeline" aria-label="Play timeline"></button>
+                <button id="nextKeyframeButton" class="icon-button-sq" type="button" title="Next frame">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+                <button id="lastFrameButton" class="icon-button-sq" type="button" title="Go to last frame">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>
+                </button>
+              </div>
+
+              <div class="keyframe-controls" aria-label="Keyframe controls">
+                <button id="autoKeyToggleButton" class="icon-button-sq timeline-keyframe-button" type="button" title="Toggle Auto Keyframe (A)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3" fill="currentColor"></circle></svg>
+                </button>
+                <button id="addKeyframeButton" class="icon-button-sq timeline-keyframe-button add" type="button" title="Add keyframe (K)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+                <button id="copyKeyframeButton" class="icon-button-sq timeline-keyframe-button" type="button" title="Copy keyframe (Ctrl+C)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+                <button id="pasteKeyframeButton" class="icon-button-sq timeline-keyframe-button" type="button" title="Paste keyframe (Ctrl+V)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                </button>
+                <button id="deleteKeyframeButton" class="icon-button-sq timeline-keyframe-button danger" type="button" title="Delete keyframe (Delete)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+              </div>
+              <span id="timelineFrameReadout">Keyframe 1 / 1</span>
+            </div>
+
+            <div class="timeline-header-right">
+              <div class="timeline-stats" aria-label="Timeline frame details">
+                <span id="currentFrameReadout">Frame 0</span>
+                <span id="totalFrameReadout">Total 180</span>
+                <span id="zoomReadout">View 0-180</span>
+              </div>
+              <button id="exportJsonButton" type="button" title="Export Camera JSON">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Export JSON</span>
+              </button>
+            </div>
+          </div>
+          <div class="timeline-track-wrap">
+            <div id="playheadBubble" class="playhead-bubble">F0</div>
+            <input id="bottomTimelineInput" class="bottom-timeline" type="range" min="0" max="1000" value="0" />
+            <div id="timelineMarkers" class="timeline-markers"></div>
+            <div id="audioTrack" class="audio-track" hidden>
+              <span id="audioTrackLabel">Audio</span>
+              <div id="audioWaveform" class="audio-waveform"></div>
+            </div>
+            <div id="timelineScale" class="timeline-scale"></div>
+          </div>
+        </section>
+      </section>
+
+      <aside id="controlPanel" class="control-panel" aria-label="Animation controls">
+        <div class="panel-header">
+          <h2>Details</h2>
+          <button id="closePanelButton" type="button" title="Close controls">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+
+        <section class="current-values-panel" aria-label="Current camera values">
+          <div class="current-values-head">
+            <h2>Current Values</h2>
+            <button id="syncCurrentValuesButton" type="button" title="Sync current camera values">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+              <span>Sync</span>
+            </button>
+          </div>
+          <div class="current-values-grid">
+            <span>Orbit: <strong id="currentOrbitReadout">0deg 75deg 3m</strong></span>
+            <span>FOV: <strong id="currentFovValueReadout">54.4deg</strong></span>
+            <span>Target: <strong id="currentTargetReadout">0m 0m 0m</strong></span>
+          </div>
+        </section>
+
+        <div id="audioStatus" class="audio-status">No audio loaded.</div>
+
+        <section class="control-group">
+          <h2>GLB Animation</h2>
+          <div id="modelAnimationStatus" class="audio-status">No model animation loaded.</div>
+          <label class="file-control">
+            <span>Animation Clip</span>
+            <select id="animationSelect" disabled>
+              <option value="">No animation</option>
+            </select>
+          </label>
+          <label class="checkbox-control">
+            <input id="syncModelAnimationInput" type="checkbox" checked />
+            <span>Sync model animation to timeline</span>
+          </label>
+        </section>
+
+        <section class="control-group preset-group">
+          <h2>Camera Presets</h2>
+          <label class="file-control">
+            <span>Select Preset</span>
+            <select id="presetSelect">
+              <option value="" disabled selected>Select a preset...</option>
+            </select>
+          </label>
+          <div class="button-row keyframe-actions" style="margin-top: 8px;">
+            <button id="savePresetButton" type="button" title="Save/Update selected preset">
+              <span>Save Preset</span>
+            </button>
+            <button id="createPresetButton" type="button" title="Save current as new preset">
+              <span>New Preset</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="control-group ai-director-group">
+          <h2>AI Camera Director</h2>
+          <div class="ai-prompt-input-row">
+            <input id="aiPromptInput" type="text" placeholder="e.g. slow cinematic push-in 5s" />
+            <button id="aiGenerateButton" class="ai-generate-btn" type="button" title="Generate camera sequence">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+              <span>Generate</span>
+            </button>
+          </div>
+          <label class="checkbox-control ai-frame-range-toggle">
+            <input id="aiCustomRangeToggle" type="checkbox" />
+            <span>Enable custom frame range</span>
+          </label>
+          <div id="aiFrameRangeFields" class="field-grid ai-frame-range-fields disabled" style="margin-top: 6px; margin-bottom: 6px;">
+            <label>
+              <span>Start Frame</span>
+              <input id="aiStartFrameInput" type="number" min="0" placeholder="Current" disabled />
+            </label>
+            <label>
+              <span>End Frame (Optional)</span>
+              <input id="aiEndFrameInput" type="number" min="0" placeholder="Auto" disabled />
+            </label>
+          </div>
+          <div class="ai-example-chips" aria-label="Example prompts">
+            <button class="ai-chip" type="button" data-prompt="slow cinematic push-in 5s">Cinematic Push</button>
+            <button class="ai-chip" type="button" data-prompt="360 degree orbit sweep 6s">360 Orbit</button>
+            <button class="ai-chip" type="button" data-prompt="reveal from high left 4s">High Reveal</button>
+            <button class="ai-chip" type="button" data-prompt="close detail telephoto sweep 5s">Closeup Detail</button>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>Playback</h2>
+          <div class="button-row">
+            <button id="playButton" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Play</span>
+            </button>
+          </div>
+          <label class="range-control">
+            <span>Timeline</span>
+            <input id="timelineInput" type="range" min="0" max="1000" value="0" />
+          </label>
+          <div class="field-grid">
+            <label>
+              <span>Duration</span>
+              <input id="durationInput" type="number" min="0.2" step="0.1" value="6" />
+            </label>
+            <label>
+              <span>Smoothing</span>
+              <input id="smoothInput" type="number" min="0" max="1" step="0.05" value="0.35" />
+            </label>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>Cinematic Effects</h2>
+          <label class="checkbox-control">
+            <input id="shakeEnabledInput" type="checkbox" />
+            <span>Handheld Camera Shake</span>
+          </label>
+          <label class="file-control">
+            <span>Shake Profile</span>
+            <select id="shakeProfileSelect" disabled>
+              <option value="continuous">Continuous Handheld</option>
+              <option value="impact">Impact / Ground Drop</option>
+              <option value="rumble">Erratic Rumbling / Storm</option>
+            </select>
+          </label>
+          <label class="range-control">
+            <span>
+              Shake Intensity
+              <strong id="shakeIntensityReadout">0.30</strong>
+            </span>
+            <input id="shakeIntensityInput" type="range" min="0" max="1" step="0.05" value="0.30" disabled />
+          </label>
+          <label class="range-control">
+            <span>
+              Shake Speed
+              <strong id="shakeSpeedReadout">2.0Hz</strong>
+            </span>
+            <input id="shakeSpeedInput" type="range" min="0.5" max="5" step="0.1" value="2.0" disabled />
+          </label>
+          <button id="addShakeKeyframeButton" type="button" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 12 12 22 2 12 12 2"></polygon></svg>
+            <span>Keyframe Shake</span>
+          </button>
+        </section>
+
+        <section class="control-group">
+          <h2>Lens Control</h2>
+          <label class="range-control lens-control">
+            <span>
+              Lens
+              <strong id="lensReadout">35mm</strong>
+            </span>
+            <input id="lensInput" type="range" min="12" max="135" step="1" value="35" />
+          </label>
+          <div class="lens-pills" aria-label="Lens presets">
+            <button type="button" data-lens="18">18</button>
+            <button type="button" data-lens="24">24</button>
+            <button type="button" data-lens="35">35</button>
+            <button type="button" data-lens="50">50</button>
+            <button type="button" data-lens="85">85</button>
+          </div>
+          <div class="lens-hint">
+            <span id="fovReadout">54.4deg FOV</span>
+            <span>Full-frame equivalent</span>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>Camera Orbit</h2>
+          <div class="field-grid">
+            <label>
+              <span>Yaw</span>
+              <input id="yawInput" type="number" step="1" value="0" />
+            </label>
+            <label>
+              <span>Pitch</span>
+              <input id="pitchInput" type="number" step="1" value="75" />
+            </label>
+            <label>
+              <span>Radius</span>
+              <input id="radiusInput" type="number" min="0.01" step="0.1" value="3" />
+            </label>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>Camera Target</h2>
+          <div class="field-grid target-grid">
+            <label>
+              <span>Target X</span>
+              <input id="targetXInput" type="number" step="0.05" value="0" />
+            </label>
+            <label>
+              <span>Target Y</span>
+              <input id="targetYInput" type="number" step="0.05" value="0" />
+            </label>
+            <label>
+              <span>Target Z</span>
+              <input id="targetZInput" type="number" step="0.05" value="0" />
+            </label>
+          </div>
+        </section>
+
+        <section class="control-group easing-control-group">
+          <h2>Transition Easing</h2>
+          <label class="file-control">
+            <span>Selected Keyframe Easing</span>
+            <select id="easingSelect" disabled>
+              <option value="easeInOut">Ease In Out (Smooth)</option>
+              <option value="linear">Linear (Constant Speed)</option>
+              <option value="easeIn">Ease In (Accelerate)</option>
+              <option value="easeOut">Ease Out (Decelerate)</option>
+              <option value="bounce">Bounce (Elastic bounce)</option>
+              <option value="elastic">Elastic (Spring effect)</option>
+            </select>
+          </label>
+          <div class="easing-preview-wrap">
+            <svg id="easingPreviewSvg" class="easing-preview-svg" viewBox="0 0 100 100">
+              <path id="easingPath" d="M 0 100 L 100 0" fill="none" stroke="var(--accent)" stroke-width="2.5" />
+            </svg>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>Keyframes</h2>
+          <div class="button-row keyframe-actions">
+            <button id="nudgeKeyframeLeftButton" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              <span>Move -1F</span>
+            </button>
+            <button id="nudgeKeyframeRightButton" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              <span>Move +1F</span>
+            </button>
+          </div>
+          <ol id="keyframeList" class="keyframe-list"></ol>
+        </section>
+
+        <section class="control-group">
+          <h2>Labels</h2>
+          <div id="labelList" class="label-list">No labels loaded.</div>
+        </section>
+      </aside>
+    </main>
+    <audio id="timelineAudio"></audio>
+
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script defer src="./app.js"></script>
+  </body>
+</html>
