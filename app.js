@@ -673,6 +673,10 @@ function generateAiSequence(promptText) {
     return;
   }
 
+  if (state.isPlaying) {
+    pause();
+  }
+
   // Capture the live viewport camera first, so AI moves always begin exactly
   // where the user has placed the camera at the current playhead frame.
   syncInputsFromLiveCamera();
@@ -690,7 +694,7 @@ function generateAiSequence(promptText) {
   const useCustomRange = !!inputs.aiCustomRange?.checked;
   let startFrame = useCustomRange && inputs.aiStartFrame?.value !== ""
     ? parseInt(inputs.aiStartFrame.value, 10)
-    : getCurrentFrame(getTimelineTime());
+    : getVisibleTimelineFrame();
   let endFrame = useCustomRange && inputs.aiEndFrame?.value ? parseInt(inputs.aiEndFrame.value, 10) : null;
 
   // Parse prompt ranges only when custom frame range is enabled.
@@ -845,31 +849,26 @@ function generateAiSequence(promptText) {
   const isPush = hasKeyword(["push", "dolly in", "dolly-in", "zoom in", "zoom-in", "closer"]);
   const isPull = hasKeyword(["pull", "dolly out", "dolly-out", "zoom out", "zoom-out", "reveal"]);
 
-  // Determine starting directions
-  let hasDirection = false;
-  let directionYaw = currentYaw;
-  let directionPitch = currentPitch;
+  // Keep the current screen angle as the anchor. Direction words modify the
+  // ending motion relative to the user's camera instead of jumping to fixed
+  // world angles like front/left/right.
+  let yawOffset = 0;
+  let pitchOffset = 0;
 
   if (hasKeyword("left")) {
-    directionYaw = -90;
-    hasDirection = true;
+    yawOffset = -35;
   } else if (hasKeyword("right")) {
-    directionYaw = 90;
-    hasDirection = true;
-  } else if (hasKeyword("front")) {
-    directionYaw = 0;
-    hasDirection = true;
+    yawOffset = 35;
   } else if (hasKeyword("back")) {
-    directionYaw = 180;
-    hasDirection = true;
+    yawOffset = 90;
+  } else if (hasKeyword("front")) {
+    yawOffset = 0;
   }
 
   if (hasKeyword(["high", "top", "above"])) {
-    directionPitch = 30; // looking down from high angle
-    hasDirection = true;
+    pitchOffset = -12;
   } else if (hasKeyword(["low", "bottom", "below"])) {
-    directionPitch = 120; // looking up from low angle
-    hasDirection = true;
+    pitchOffset = 12;
   }
 
   let generatedFrames = [];
@@ -900,7 +899,7 @@ function generateAiSequence(promptText) {
       const ratio = i / count;
       const t = startTime + ratio * sequenceDuration;
       const yaw = currentYaw + ratio * spanYaw;
-      const pitch = hasDirection ? lerp(currentPitch, directionPitch, ratio) : currentPitch;
+      const pitch = clamp(currentPitch + (pitchOffset * ratio), 1, 179);
       const radius = startRadius * (hasKeyword("closer") ? 0.8 : 1.0);
 
       generatedFrames.push(makeAiFrame(t, { yaw, pitch, radius }));
@@ -910,8 +909,8 @@ function generateAiSequence(promptText) {
     generatedFrames = [
       startFrameData,
       makeAiFrame(endTime, {
-        yaw: hasDirection ? directionYaw : currentYaw,
-        pitch: hasDirection ? directionPitch : currentPitch,
+        yaw: currentYaw + yawOffset,
+        pitch: clamp(currentPitch + pitchOffset, 1, 179),
         radius: startRadius * factor,
       })
     ];
@@ -920,8 +919,8 @@ function generateAiSequence(promptText) {
     generatedFrames = [
       startFrameData,
       makeAiFrame(endTime, {
-        yaw: hasDirection ? directionYaw : currentYaw,
-        pitch: hasDirection ? directionPitch : currentPitch,
+        yaw: currentYaw + yawOffset,
+        pitch: clamp(currentPitch + pitchOffset, 1, 179),
         radius: startRadius * factor,
       })
     ];
@@ -931,8 +930,8 @@ function generateAiSequence(promptText) {
     generatedFrames = [
       startFrameData,
       makeAiFrame(endTime, {
-        yaw: (hasDirection ? directionYaw : currentYaw) + endYawOffset,
-        pitch: clamp((hasDirection ? directionPitch : currentPitch) - 10, 1, 179),
+        yaw: currentYaw + yawOffset + endYawOffset,
+        pitch: clamp(currentPitch + pitchOffset - 10, 1, 179),
         radius: startRadius,
       })
     ];
@@ -960,13 +959,14 @@ function generateAiSequence(promptText) {
 
   renderKeyframes();
   renderTimelineMarkers();
+  state.isPlaying = false;
+  state.pausedAt = startTime;
+  modelViewer.setAttribute("camera-controls", "");
   seek(startTime);
+  updatePlaybackButtons();
   drawCameraPath();
 
-  // Automatically play the generated sequence
-  play();
-
-  setStatus(`AI Director: Overrode camera keyframes from frame ${startFrame} to ${getCurrentFrame(endTime)}.`);
+  setStatus(`AI Director: Start camera saved at frame ${startFrame}. Overrode keyframes to frame ${getCurrentFrame(endTime)}. Press Play to preview.`);
 }
 
 function getEasingValue(type, t) {
@@ -1145,6 +1145,14 @@ function interpolateFrame(time) {
 
 function getTimelineTime() {
   return (parseNumber(inputs.timeline.value, 0) / 1000) * state.duration;
+}
+
+function getVisibleTimelineFrame() {
+  return clamp(
+    parseInt(inputs.bottomTimeline?.value ?? getCurrentFrame(getTimelineTime()), 10) || 0,
+    0,
+    getTotalFrames(),
+  );
 }
 
 function getTimelineFrameDuration() {
