@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260525-13" />
+    <link rel="stylesheet" href="./styles.css?v=20260525-14" />
     <link rel="manifest" href="./manifest.json" />
     <script
       type="module"
@@ -17,7 +17,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260525-13")
+          navigator.serviceWorker.register("./sw.js?v=20260525-14")
             .then((reg) => console.log("Service Worker registered!"))
             .catch((err) => console.log("Service Worker registration failed:", err));
         });
@@ -87,7 +87,7 @@
         <div class="viewer-toolbar">
           <div>
             <h1>Camera Animation Tool</h1>
-            <span id="appVersionBadge" class="app-version-badge">v2026.05.25.13</span>
+            <span id="appVersionBadge" class="app-version-badge">v2026.05.25.14</span>
             <p id="statusText">Load a GLB or GLTF model to begin.</p>
           </div>
           <div class="toolbar-actions">
@@ -244,6 +244,9 @@
             <div id="timelineMarkers" class="timeline-markers"></div>
             <div id="audioTrack" class="audio-track" hidden>
               <div id="audioWaveform" class="audio-waveform"></div>
+              <button id="deleteAudioButton" class="delete-audio-btn" type="button" title="Delete audio track">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
             </div>
             <div id="timelineScale" class="timeline-scale"></div>
           </div>
@@ -499,6 +502,6 @@
     <audio id="timelineAudio"></audio>
 
      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script defer src="./app.js?v=20260525-13"></script>
+    <script defer src="./app.js?v=20260525-14"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.25.13";
+const APP_VERSION = "v2026.05.25.14";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -104,6 +104,7 @@ const buttons = {
   syncCurrentValues: document.querySelector("#syncCurrentValuesButton"),
   autoKeyToggle: document.querySelector("#autoKeyToggleButton"),
   aiGenerate: document.querySelector("#aiGenerateButton"),
+  deleteAudio: document.querySelector("#deleteAudioButton"),
 };
 
 const startStatuses = {
@@ -2926,6 +2927,42 @@ async function loadAudio(file) {
   }
 }
 
+function deleteAudio() {
+  if (state.audioUrl) {
+    URL.revokeObjectURL(state.audioUrl);
+  }
+  state.audioUrl = "";
+  state.audioName = "";
+  state.audioDuration = 0;
+  state.audioWaveformData = [];
+  timelineAudio.removeAttribute("src");
+  timelineAudio.load();
+  audioStatus.textContent = "No audio loaded.";
+  audioTrack.hidden = true;
+  if (timelineTrackWrap) {
+    timelineTrackWrap.classList.remove("has-audio");
+  }
+
+  // Clear inputs so same audio file can be reloaded
+  if (inputs.audio) inputs.audio.value = "";
+  if (inputs.startAudio) inputs.startAudio.value = "";
+  updateStartStatus("audio", "Optional audio track");
+
+  // Recalculate duration bounds
+  const lastKeyframeTime = state.keyframes.at(-1)?.time || 0.2;
+  state.duration = Math.max(
+    parseNumber(inputs.duration.value, 6),
+    lastKeyframeTime,
+    state.modelAnimationDuration,
+    0.2
+  );
+  inputs.duration.value = state.duration.toFixed(1);
+
+  renderTimelineMarkers();
+  seek(getTimelineTime());
+  setStatus("Audio track removed.");
+}
+
 async function loadCamera(file) {
   const json = await readJsonFile(file);
   const rawFrames = extractCameraFrames(json);
@@ -3497,6 +3534,9 @@ buttons.saveProject.addEventListener("click", saveWorkingFile);
 buttons.copyKeyframe.addEventListener("click", () => copyKeyframe());
 buttons.pasteKeyframe.addEventListener("click", () => pasteKeyframe());
 buttons.deleteKeyframe.addEventListener("click", () => deleteKeyframe());
+if (buttons.deleteAudio) {
+  buttons.deleteAudio.addEventListener("click", deleteAudio);
+}
 buttons.nudgeKeyframeLeft.addEventListener("click", () => nudgeSelectedKeyframe(-1));
 buttons.nudgeKeyframeRight.addEventListener("click", () => nudgeSelectedKeyframe(1));
 buttons.syncCurrentValues.addEventListener("click", () => {
