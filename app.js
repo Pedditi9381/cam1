@@ -218,6 +218,7 @@ function cloneKeyframe(frame) {
     fov: frame.fov,
     shake: frame.shake,
     easing: frame.easing ?? 'easeInOut',
+    source: frame.source,
   };
 }
 
@@ -384,6 +385,8 @@ function normalizeKeyframe(raw, index, totalDuration) {
       fov,
       lens,
       shake: parseNumber(raw.shake ?? (raw.shakeEnabled ? 0.3 : 0), 0.3),
+      easing: raw.easing ?? "easeInOut",
+      source: raw.source,
     };
   }
 
@@ -425,6 +428,8 @@ function normalizeKeyframe(raw, index, totalDuration) {
     fov: parseNumber(raw.fov ?? raw.fieldOfView, state.defaultCamera.fov),
     lens: parseNumber(raw.lens ?? raw.lensMm ?? raw.focalLength, fovToLens(raw.fov ?? raw.fieldOfView ?? state.defaultCamera.fov)),
     shake: parseNumber(raw.shake ?? raw.shakeIntensity ?? (raw.shakeEnabled ? 0.3 : 0), 0.3),
+    easing: raw.easing ?? "easeInOut",
+    source: raw.source,
   };
 }
 
@@ -668,6 +673,10 @@ function generateAiSequence(promptText) {
     return;
   }
 
+  // Capture the live viewport camera first, so AI moves always begin exactly
+  // where the user has placed the camera at the current playhead frame.
+  syncInputsFromLiveCamera();
+
   const hasKeyword = (keywords) => {
     const list = Array.isArray(keywords) ? keywords : [keywords];
     return list.some(k => {
@@ -747,8 +756,10 @@ function generateAiSequence(promptText) {
     speed = "easeOut";
   }
 
-  // 3. Lens/Focal Length Parsing
-  let lens = 35; // default cinematic
+  const currentCameraFrame = createCurrentKeyframe(startTime);
+
+  // 3. Lens/Focal Length Parsing. Default keeps the user's current lens.
+  let lens = currentCameraFrame.lens || 35;
   if (hasKeyword(["wide", "establishing"])) {
     lens = 24;
   } else if (hasKeyword(["close-up", "closeup", "detail", "telephoto", "tight"])) {
@@ -817,13 +828,16 @@ function generateAiSequence(promptText) {
   }
 
   // 4. Direction/Angles extraction relative to current active viewport camera
-  const currentYaw = parseNumber(inputs.yaw.value, state.defaultCamera.orbit.yaw);
-  const currentPitch = parseNumber(inputs.pitch.value, state.defaultCamera.orbit.pitch);
-  const currentRadius = parseNumber(inputs.radius.value, state.defaultCamera.orbit.radius);
-  const currentTarget = readCurrentTarget();
+  const currentYaw = currentCameraFrame.orbit.yaw;
+  const currentPitch = currentCameraFrame.orbit.pitch;
+  const currentRadius = currentCameraFrame.orbit.radius;
+  const currentTarget = currentCameraFrame.target;
+  const startFrameData = {
+    ...cloneKeyframe(currentCameraFrame),
+    time: startTime,
+    source: "ai-director",
+  };
 
-  let startYaw = currentYaw;
-  let startPitch = currentPitch;
   let startRadius = currentRadius;
 
   // Orbit check
@@ -859,6 +873,16 @@ function generateAiSequence(promptText) {
   }
 
   let generatedFrames = [];
+  const makeAiFrame = (time, orbit, target = currentTarget, lensValue = lens) => ({
+    time,
+    orbit,
+    target: { ...target },
+    lens: lensValue,
+    fov: lensToFov(lensValue),
+    shake: parsedShake ? parsedShakeIntensity : 0,
+    easing: speed,
+    source: "ai-director",
+  });
 
   if (isOrbit) {
     // Determine bounds
@@ -871,89 +895,46 @@ function generateAiSequence(promptText) {
     }
     
     const count = is360 ? 4 : 2;
-    for (let i = 0; i <= count; i++) {
+    generatedFrames.push(startFrameData);
+    for (let i = 1; i <= count; i++) {
       const ratio = i / count;
       const t = startTime + ratio * sequenceDuration;
-      const yaw = directionYaw + ratio * spanYaw;
-      const pitch = directionPitch;
+      const yaw = currentYaw + ratio * spanYaw;
+      const pitch = hasDirection ? lerp(currentPitch, directionPitch, ratio) : currentPitch;
       const radius = startRadius * (hasKeyword("closer") ? 0.8 : 1.0);
-      
-      generatedFrames.push({
-        time: t,
-        orbit: { yaw, pitch, radius },
-        target: { ...currentTarget },
-        lens,
-        fov: lensToFov(lens),
-        shake: parsedShake ? parsedShakeIntensity : 0,
-        easing: speed
-      });
+
+      generatedFrames.push(makeAiFrame(t, { yaw, pitch, radius }));
     }
   } else if (isPush) {
     const factor = hasKeyword(["tight", "close"]) ? 0.4 : 0.65;
     generatedFrames = [
-      {
-        time: startTime,
-        orbit: { yaw: directionYaw, pitch: directionPitch, radius: startRadius * 1.5 },
-        target: { ...currentTarget },
-        lens,
-        fov: lensToFov(lens),
-        shake: parsedShake ? parsedShakeIntensity : 0,
-        easing: speed
-      },
-      {
-        time: endTime,
-        orbit: { yaw: directionYaw, pitch: directionPitch, radius: startRadius * factor },
-        target: { ...currentTarget },
-        lens,
-        fov: lensToFov(lens),
-        shake: parsedShake ? parsedShakeIntensity : 0,
-        easing: speed
-      }
+      startFrameData,
+      makeAiFrame(endTime, {
+        yaw: hasDirection ? directionYaw : currentYaw,
+        pitch: hasDirection ? directionPitch : currentPitch,
+        radius: startRadius * factor,
+      })
     ];
   } else if (isPull) {
     const factor = hasKeyword(["far", "wide"]) ? 1.8 : 1.4;
     generatedFrames = [
-      {
-        time: startTime,
-        orbit: { yaw: directionYaw, pitch: directionPitch, radius: startRadius * 0.7 },
-        target: { ...currentTarget },
-        lens,
-        fov: lensToFov(lens),
-        shake: parsedShake ? parsedShakeIntensity : 0,
-        easing: speed
-      },
-      {
-        time: endTime,
-        orbit: { yaw: directionYaw, pitch: directionPitch, radius: startRadius * factor },
-        target: { ...currentTarget },
-        lens,
-        fov: lensToFov(lens),
-        shake: parsedShake ? parsedShakeIntensity : 0,
-        easing: speed
-      }
+      startFrameData,
+      makeAiFrame(endTime, {
+        yaw: hasDirection ? directionYaw : currentYaw,
+        pitch: hasDirection ? directionPitch : currentPitch,
+        radius: startRadius * factor,
+      })
     ];
   } else {
     // Default motion: reveal/sweep/pan from current direction
     const endYawOffset = hasKeyword(["reveal", "sweep"]) ? 45 : 0;
     generatedFrames = [
-      {
-        time: startTime,
-        orbit: { yaw: directionYaw - endYawOffset, pitch: directionPitch, radius: startRadius * 1.2 },
-        target: { ...currentTarget },
-        lens,
-        fov: lensToFov(lens),
-        shake: parsedShake ? parsedShakeIntensity : 0,
-        easing: speed
-      },
-      {
-        time: endTime,
-        orbit: { yaw: directionYaw + endYawOffset, pitch: directionPitch - 10, radius: startRadius },
-        target: { ...currentTarget },
-        lens,
-        fov: lensToFov(lens),
-        shake: parsedShake ? parsedShakeIntensity : 0,
-        easing: speed
-      }
+      startFrameData,
+      makeAiFrame(endTime, {
+        yaw: (hasDirection ? directionYaw : currentYaw) + endYawOffset,
+        pitch: clamp((hasDirection ? directionPitch : currentPitch) - 10, 1, 179),
+        radius: startRadius,
+      })
     ];
   }
 
@@ -962,7 +943,8 @@ function generateAiSequence(promptText) {
     normalizeKeyframe(frame, index, generatedFrames.length)
   );
 
-  // Filter out any existing keyframes that fall inside the new target range
+  // Override camera keyframes in the generated range so running AI Director
+  // again replaces the previous AI move instead of stacking duplicate keys.
   state.keyframes = state.keyframes.filter(frame => 
     frame.time < startTime - 0.001 || frame.time > endTime + 0.001
   );
@@ -984,7 +966,7 @@ function generateAiSequence(promptText) {
   // Automatically play the generated sequence
   play();
 
-  setStatus(`AI Director: Merged keyframes from frame ${startFrame} to ${getCurrentFrame(endTime)}.`);
+  setStatus(`AI Director: Overrode camera keyframes from frame ${startFrame} to ${getCurrentFrame(endTime)}.`);
 }
 
 function getEasingValue(type, t) {
