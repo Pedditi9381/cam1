@@ -1,6 +1,8 @@
+const APP_VERSION = "v2026.05.25.6";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
+const appVersionBadge = document.querySelector("#appVersionBadge");
 const dropOverlay = document.querySelector("#dropOverlay");
 const keyframeList = document.querySelector("#keyframeList");
 const labelList = document.querySelector("#labelList");
@@ -32,6 +34,11 @@ const timelinePanel = document.querySelector(".timeline-panel");
 const menuDropdowns = Array.from(document.querySelectorAll(".menu-dropdown"));
 const cursorImportMenu = document.querySelector("#cursorImportMenu");
 const mousePosition = { x: 24, y: 48 };
+
+if (appVersionBadge) {
+  appVersionBadge.textContent = APP_VERSION;
+  appVersionBadge.title = `App version ${APP_VERSION}`;
+}
 
 const inputs = {
   startModel: document.querySelector("#startModelInput"),
@@ -207,6 +214,8 @@ const state = {
   modelAnimationDuration: 0,
   isMouseOverTimeline: false,
   autoKeyframe: false,
+  aiStartFrameEdited: false,
+  aiEndFrameEdited: false,
 };
 
 function cloneKeyframe(frame) {
@@ -286,8 +295,11 @@ function updateAiFrameRangeState() {
   if (!enabled) {
     if (inputs.aiStartFrame) inputs.aiStartFrame.value = "";
     if (inputs.aiEndFrame) inputs.aiEndFrame.value = "";
+    state.aiStartFrameEdited = false;
+    state.aiEndFrameEdited = false;
   } else if (inputs.aiStartFrame && inputs.aiStartFrame.value === "") {
-    inputs.aiStartFrame.value = getCurrentFrame(getTimelineTime());
+    inputs.aiStartFrame.value = getVisibleTimelineFrame();
+    state.aiStartFrameEdited = false;
   }
 }
 
@@ -537,6 +549,72 @@ function updateCurrentValuesDisplay(frame = createCurrentKeyframe(getTimelineTim
   }
 }
 
+function captureLiveCameraFrame(time = getTimelineTime()) {
+  const fallback = createCurrentKeyframe(time);
+  const frame = cloneKeyframe(fallback);
+  frame.time = time;
+
+  try {
+    const orbit = modelViewer.getCameraOrbit?.();
+    if (orbit) {
+      frame.orbit = {
+        yaw: (orbit.theta * 180) / Math.PI,
+        pitch: (orbit.phi * 180) / Math.PI,
+        radius: Math.max(parseNumber(orbit.radius, frame.orbit.radius), 0.01),
+      };
+    }
+  } catch (error) {
+    const orbitAttr = modelViewer.cameraOrbit;
+    if (orbitAttr) {
+      const parts = String(orbitAttr).trim().split(/\s+/);
+      if (parts.length >= 3) {
+        frame.orbit = {
+          yaw: parseNumber(parseFloat(parts[0]), frame.orbit.yaw),
+          pitch: parseNumber(parseFloat(parts[1]), frame.orbit.pitch),
+          radius: Math.max(parseNumber(parseFloat(parts[2]), frame.orbit.radius), 0.01),
+        };
+      }
+    }
+  }
+
+  try {
+    const target = modelViewer.getCameraTarget?.();
+    if (target) {
+      frame.target = {
+        x: parseNumber(target.x, frame.target.x),
+        y: parseNumber(target.y, frame.target.y),
+        z: parseNumber(target.z, frame.target.z),
+      };
+    }
+  } catch (error) {
+    const targetAttr = modelViewer.cameraTarget;
+    if (targetAttr) {
+      const parts = String(targetAttr).trim().split(/\s+/);
+      if (parts.length >= 3) {
+        frame.target = {
+          x: parseNumber(parseFloat(parts[0]), frame.target.x),
+          y: parseNumber(parseFloat(parts[1]), frame.target.y),
+          z: parseNumber(parseFloat(parts[2]), frame.target.z),
+        };
+      }
+    }
+  }
+
+  try {
+    const fov = modelViewer.getFieldOfView?.();
+    if (fov) {
+      frame.fov = parseNumber(fov, frame.fov);
+      frame.lens = fovToLens(frame.fov);
+    }
+  } catch (error) {
+    const fieldOfView = parseNumber(parseFloat(modelViewer.fieldOfView), frame.fov);
+    frame.fov = fieldOfView;
+    frame.lens = fovToLens(fieldOfView);
+  }
+
+  return frame;
+}
+
 function syncInputsFromLiveCamera() {
   let didSync = false;
 
@@ -692,10 +770,10 @@ function generateAiSequence(promptText) {
 
   // 1. Frame Range Parsing. Default starts at playhead; custom range is opt-in.
   const useCustomRange = !!inputs.aiCustomRange?.checked;
-  let startFrame = useCustomRange && inputs.aiStartFrame?.value !== ""
+  let startFrame = useCustomRange && state.aiStartFrameEdited && inputs.aiStartFrame?.value !== ""
     ? parseInt(inputs.aiStartFrame.value, 10)
     : getVisibleTimelineFrame();
-  let endFrame = useCustomRange && inputs.aiEndFrame?.value ? parseInt(inputs.aiEndFrame.value, 10) : null;
+  let endFrame = useCustomRange && state.aiEndFrameEdited && inputs.aiEndFrame?.value ? parseInt(inputs.aiEndFrame.value, 10) : null;
 
   // Parse prompt ranges only when custom frame range is enabled.
   const rangeMatch = query.match(/(?:frame\s+)?(\d+)\s*(?:to|-)\s*(?:frame\s+)?(\d+)/i);
@@ -737,6 +815,11 @@ function generateAiSequence(promptText) {
     endFrame = startFrame + Math.round(sequenceDuration * state.fps);
   }
   const endTime = startTime + sequenceDuration;
+  const currentCameraFrame = {
+    ...captureLiveCameraFrame(startTime),
+    time: startTime,
+    source: "ai-director",
+  };
 
   // Synchronize UI inputs to match the resolved range
   if (inputs.aiStartFrame) {
@@ -745,6 +828,8 @@ function generateAiSequence(promptText) {
   if (inputs.aiEndFrame) {
     inputs.aiEndFrame.value = endFrame;
   }
+  state.aiStartFrameEdited = false;
+  state.aiEndFrameEdited = false;
 
   // 2. Speed / Easing Parsing
   let speed = "easeInOut"; // default
@@ -759,8 +844,6 @@ function generateAiSequence(promptText) {
   } else if (hasKeyword(["decelerate", "ease-out", "ease out"])) {
     speed = "easeOut";
   }
-
-  const currentCameraFrame = createCurrentKeyframe(startTime);
 
   // 3. Lens/Focal Length Parsing. Default keeps the user's current lens.
   let lens = currentCameraFrame.lens || 35;
@@ -962,7 +1045,16 @@ function generateAiSequence(promptText) {
   state.isPlaying = false;
   state.pausedAt = startTime;
   modelViewer.setAttribute("camera-controls", "");
-  seek(startTime);
+  updateTimeline(startTime);
+  if (state.audioDuration && Math.abs(timelineAudio.currentTime - startTime) > 0.08) {
+    timelineAudio.currentTime = clamp(startTime, 0, state.audioDuration);
+  }
+  if (inputs.syncModelAnimation.checked && state.modelAnimationDuration) {
+    modelViewer.currentTime = clamp(startTime, 0, state.modelAnimationDuration);
+  }
+  updateLabelPositions();
+  updateLabelVisibilities(startTime);
+  applyCamera(startFrameData);
   updatePlaybackButtons();
   drawCameraPath();
 
@@ -3641,6 +3733,16 @@ if (buttons.aiGenerate && inputs.aiPrompt) {
 if (inputs.aiCustomRange) {
   inputs.aiCustomRange.addEventListener("change", updateAiFrameRangeState);
   updateAiFrameRangeState();
+}
+if (inputs.aiStartFrame) {
+  inputs.aiStartFrame.addEventListener("input", () => {
+    state.aiStartFrameEdited = true;
+  });
+}
+if (inputs.aiEndFrame) {
+  inputs.aiEndFrame.addEventListener("input", () => {
+    state.aiEndFrameEdited = true;
+  });
 }
 
 document.querySelectorAll(".ai-chip").forEach((chip) => {
