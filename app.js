@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.25.6";
+const APP_VERSION = "v2026.05.25.7";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -672,11 +672,11 @@ function syncInputsFromLiveCamera() {
   return didSync;
 }
 
-function applyCamera(frame) {
+function applyCamera(frame, options = {}) {
   const smooth = clamp(parseNumber(inputs.smooth.value, 0.35), 0, 1);
   const lens = clamp(parseNumber(frame.lens, parseNumber(inputs.lens.value, 35)), 12, 135);
   const fov = lensToFov(lens);
-  modelViewer.interpolationDecay = String(smooth);
+  modelViewer.interpolationDecay = options.instant ? "0" : String(smooth);
 
   // Apply camera shake noise offsets
   let yaw = frame.orbit.yaw;
@@ -715,6 +715,9 @@ function applyCamera(frame) {
   modelViewer.cameraOrbit = `${yaw.toFixed(2)}deg ${pitch.toFixed(2)}deg ${frame.orbit.radius.toFixed(3)}m`;
   modelViewer.cameraTarget = `${targetX.toFixed(3)}m ${targetY.toFixed(3)}m ${frame.target.z.toFixed(3)}m`;
   modelViewer.fieldOfView = `${fov.toFixed(2)}deg`;
+  if (options.instant && typeof modelViewer.jumpCameraToGoal === "function") {
+    modelViewer.jumpCameraToGoal();
+  }
 
   inputs.yaw.value = frame.orbit.yaw.toFixed(1);
   inputs.pitch.value = frame.orbit.pitch.toFixed(1);
@@ -754,10 +757,6 @@ function generateAiSequence(promptText) {
   if (state.isPlaying) {
     pause();
   }
-
-  // Capture the live viewport camera first, so AI moves always begin exactly
-  // where the user has placed the camera at the current playhead frame.
-  syncInputsFromLiveCamera();
 
   const hasKeyword = (keywords) => {
     const list = Array.isArray(keywords) ? keywords : [keywords];
@@ -820,6 +819,7 @@ function generateAiSequence(promptText) {
     time: startTime,
     source: "ai-director",
   };
+  updateCurrentValuesDisplay(currentCameraFrame);
 
   // Synchronize UI inputs to match the resolved range
   if (inputs.aiStartFrame) {
@@ -1054,11 +1054,11 @@ function generateAiSequence(promptText) {
   }
   updateLabelPositions();
   updateLabelVisibilities(startTime);
-  applyCamera(startFrameData);
+  applyCamera(startFrameData, { instant: true });
   updatePlaybackButtons();
   drawCameraPath();
 
-  setStatus(`AI Director: Start camera saved at frame ${startFrame}. Overrode keyframes to frame ${getCurrentFrame(endTime)}. Press Play to preview.`);
+  setStatus(`AI start captured: ${formatOrbit(startFrameData.orbit)} at frame ${startFrame}. Press Play to preview.`);
 }
 
 function getEasingValue(type, t) {
