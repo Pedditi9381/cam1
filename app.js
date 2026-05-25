@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.25.12";
+const APP_VERSION = "v2026.05.25.13";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -1354,6 +1354,10 @@ function updateTimelineReadouts(time) {
     ? trackInset + (percent / 100) * Math.max(trackWidth - trackInset * 2, 1)
     : 0;
   playheadBubble.style.left = `${playheadX}px`;
+
+  if (state.audioDuration > 0) {
+    renderAudioTrack();
+  }
 }
 
 function getFramePercent(frame) {
@@ -1403,18 +1407,6 @@ function renderTimelineScale() {
   });
 }
 
-function generateFakeWaveformData(count = 300) {
-  const data = [];
-  for (let i = 0; i < count; i++) {
-    const val = 0.15 + 
-      0.35 * Math.abs(Math.sin(i * 0.05) * Math.cos(i * 0.015)) + 
-      0.3 * Math.abs(Math.sin(i * 0.12) * Math.sin(i * 0.03)) +
-      0.2 * Math.random();
-    data.push(Math.min(val, 1));
-  }
-  return data;
-}
-
 function renderAudioTrack() {
   audioWaveform.innerHTML = "";
 
@@ -1426,7 +1418,6 @@ function renderAudioTrack() {
 
   audioTrack.hidden = false;
   timelineTrackWrap?.classList.add("has-audio");
-  audioTrackLabel.textContent = `${state.audioName} (${state.audioDuration.toFixed(2)}s)`;
 
   const canvas = document.createElement("canvas");
   canvas.className = "audio-waveform-canvas";
@@ -1444,7 +1435,39 @@ function renderAudioTrack() {
   ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
   const hasRealData = state.audioWaveformData && state.audioWaveformData.length > 0;
-  const data = hasRealData ? state.audioWaveformData : generateFakeWaveformData(300);
+  
+  // Set drawing density dynamically to match width
+  const numBars = Math.min(width, 400);
+  const data = [];
+  
+  const startFrame = state.timelineViewStartFrame;
+  const endFrame = state.timelineViewEndFrame;
+  const frameSpan = endFrame - startFrame;
+
+  if (hasRealData) {
+    for (let i = 0; i < numBars; i++) {
+      const ratioOnScreen = i / (numBars - 1);
+      const frame = startFrame + ratioOnScreen * frameSpan;
+      const t = frame / state.fps;
+      const audioRatio = t / state.audioDuration;
+      
+      const idx = Math.round(audioRatio * (state.audioWaveformData.length - 1));
+      if (idx >= 0 && idx < state.audioWaveformData.length) {
+        data.push(state.audioWaveformData[idx]);
+      } else {
+        data.push(0);
+      }
+    }
+  } else {
+    for (let i = 0; i < numBars; i++) {
+      const ratioOnScreen = i / (numBars - 1);
+      const frame = startFrame + ratioOnScreen * frameSpan;
+      const val = 0.15 + 
+        0.35 * Math.abs(Math.sin(frame * 0.05) * Math.cos(frame * 0.015)) + 
+        0.3 * Math.abs(Math.sin(frame * 0.12) * Math.sin(frame * 0.03));
+      data.push(Math.min(val, 1));
+    }
+  }
 
   // Draw background horizontal center line
   ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
@@ -1460,7 +1483,7 @@ function renderAudioTrack() {
   grad.addColorStop(0.5, "#4f8fd6");
   grad.addColorStop(1, "#8fb8e8");
   ctx.strokeStyle = grad;
-  ctx.lineWidth = 2.0;
+  ctx.lineWidth = Math.max(width / numBars - 0.5, 1.5);
 
   const step = width / data.length;
   for (let i = 0; i < data.length; i++) {
@@ -2875,7 +2898,7 @@ async function loadAudio(file) {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     const channelData = audioBuffer.getChannelData(0);
-    const bars = 300;
+    const bars = 2000;
     const step = Math.ceil(channelData.length / bars);
     const data = [];
 
