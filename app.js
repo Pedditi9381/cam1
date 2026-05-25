@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.25.11";
+const APP_VERSION = "v2026.05.25.12";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -1403,6 +1403,18 @@ function renderTimelineScale() {
   });
 }
 
+function generateFakeWaveformData(count = 300) {
+  const data = [];
+  for (let i = 0; i < count; i++) {
+    const val = 0.15 + 
+      0.35 * Math.abs(Math.sin(i * 0.05) * Math.cos(i * 0.015)) + 
+      0.3 * Math.abs(Math.sin(i * 0.12) * Math.sin(i * 0.03)) +
+      0.2 * Math.random();
+    data.push(Math.min(val, 1));
+  }
+  return data;
+}
+
 function renderAudioTrack() {
   audioWaveform.innerHTML = "";
 
@@ -1416,15 +1428,52 @@ function renderAudioTrack() {
   timelineTrackWrap?.classList.add("has-audio");
   audioTrackLabel.textContent = `${state.audioName} (${state.audioDuration.toFixed(2)}s)`;
 
-  const bars = 80;
-  const hasRealData = state.audioWaveformData && state.audioWaveformData.length === bars;
-  for (let index = 0; index < bars; index += 1) {
-    const bar = document.createElement("span");
-    const height = hasRealData
-      ? 10 + Math.round(state.audioWaveformData[index] * 90)
-      : 20 + Math.round(Math.abs(Math.sin(index * 1.7) * Math.cos(index * 0.31)) * 70);
-    bar.style.height = `${height}%`;
-    audioWaveform.append(bar);
+  const canvas = document.createElement("canvas");
+  canvas.className = "audio-waveform-canvas";
+  audioWaveform.append(canvas);
+
+  const width = audioWaveform.clientWidth || 800;
+  const height = audioWaveform.clientHeight || 22;
+  
+  canvas.width = width * window.devicePixelRatio;
+  canvas.height = height * window.devicePixelRatio;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const ctx = canvas.getContext("2d");
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+  const hasRealData = state.audioWaveformData && state.audioWaveformData.length > 0;
+  const data = hasRealData ? state.audioWaveformData : generateFakeWaveformData(300);
+
+  // Draw background horizontal center line
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, height / 2);
+  ctx.lineTo(width, height / 2);
+  ctx.stroke();
+
+  // Draw waveform bars
+  const grad = ctx.createLinearGradient(0, 0, 0, height);
+  grad.addColorStop(0, "#8fb8e8");
+  grad.addColorStop(0.5, "#4f8fd6");
+  grad.addColorStop(1, "#8fb8e8");
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2.0;
+
+  const step = width / data.length;
+  for (let i = 0; i < data.length; i++) {
+    const val = data[i];
+    const x = i * step + step / 2;
+    const amplitudeHeight = val * (height - 4);
+    const yStart = (height - amplitudeHeight) / 2;
+    const yEnd = yStart + amplitudeHeight;
+    
+    ctx.beginPath();
+    ctx.moveTo(x, yStart);
+    ctx.lineTo(x, yEnd);
+    ctx.stroke();
   }
 }
 
@@ -2826,7 +2875,7 @@ async function loadAudio(file) {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     const channelData = audioBuffer.getChannelData(0);
-    const bars = 80;
+    const bars = 300;
     const step = Math.ceil(channelData.length / bars);
     const data = [];
 
@@ -3895,3 +3944,9 @@ modelViewer.addEventListener("pointercancel", (event) => {
     isCtrlRightClickDragging = false;
   }
 }, true);
+
+window.addEventListener("resize", () => {
+  if (state.audioDuration > 0) {
+    renderAudioTrack();
+  }
+});
