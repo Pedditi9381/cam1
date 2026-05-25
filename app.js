@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.25.7";
+const APP_VERSION = "v2026.05.25.8";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -408,8 +408,16 @@ function normalizeKeyframe(raw, index, totalDuration) {
   if (raw.orbit || raw.cameraOrbit) {
     const source = raw.orbit ?? raw.cameraOrbit;
     orbit = {
-      yaw: normalizeAngleDegrees(source.yaw ?? source.theta ?? source.azimuth, state.defaultCamera.orbit.yaw),
-      pitch: normalizeAngleDegrees(source.pitch ?? source.phi ?? source.polar, state.defaultCamera.orbit.pitch),
+      yaw: source.yaw !== undefined 
+        ? parseNumber(source.yaw, state.defaultCamera.orbit.yaw)
+        : source.azimuth !== undefined
+        ? parseNumber(source.azimuth, state.defaultCamera.orbit.yaw)
+        : normalizeAngleDegrees(source.theta, state.defaultCamera.orbit.yaw),
+      pitch: source.pitch !== undefined
+        ? parseNumber(source.pitch, state.defaultCamera.orbit.pitch)
+        : source.polar !== undefined
+        ? parseNumber(source.polar, state.defaultCamera.orbit.pitch)
+        : normalizeAngleDegrees(source.phi, state.defaultCamera.orbit.pitch),
       radius: Math.max(parseNumber(source.radius ?? source.distance, state.defaultCamera.orbit.radius), 0.01),
     };
   } else if (raw.rotation || raw.cameraRotation || raw.euler) {
@@ -420,8 +428,12 @@ function normalizeKeyframe(raw, index, totalDuration) {
       z: state.defaultCamera.orbit.radius,
     });
     orbit = positionToOrbit(position, target);
-    orbit.yaw = normalizeAngleDegrees(source.y ?? source.yaw ?? source[1], orbit.yaw);
-    orbit.pitch = normalizeAngleDegrees(source.x ?? source.pitch ?? source[0], orbit.pitch);
+    orbit.yaw = source.yaw !== undefined 
+      ? parseNumber(source.yaw, orbit.yaw) 
+      : normalizeAngleDegrees(source.y ?? source[1], orbit.yaw);
+    orbit.pitch = source.pitch !== undefined 
+      ? parseNumber(source.pitch, orbit.pitch) 
+      : normalizeAngleDegrees(source.x ?? source[0], orbit.pitch);
   } else {
     const position = readVector(raw.position ?? raw.cameraPosition ?? raw.eye ?? raw.location, {
       x: state.defaultCamera.orbit.radius,
