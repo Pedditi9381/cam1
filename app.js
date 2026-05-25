@@ -1467,7 +1467,9 @@ function seek(time) {
     modelViewer.currentTime = clamp(clamped, 0, state.modelAnimationDuration);
   }
   updateLabelPositions();
-  applyCamera(interpolateFrame(clamped));
+  if (state.keyframes.length > 0) {
+    applyCamera(interpolateFrame(clamped));
+  }
   updateLabelVisibilities(clamped);
 }
 
@@ -1532,14 +1534,11 @@ function updateSelectedKeyframe(time) {
 }
 
 function play() {
-  if (!state.keyframes.length) {
-    setStatus("Add or load camera keyframes first.", "warn");
-    return;
-  }
-
   state.isPlaying = true;
   updatePlaybackButtons();
-  modelViewer.removeAttribute("camera-controls");
+  if (state.keyframes.length > 0) {
+    modelViewer.removeAttribute("camera-controls");
+  }
   state.startedAt = performance.now() - state.pausedAt * 1000;
   if (state.audioDuration) {
     timelineAudio.currentTime = clamp(state.pausedAt, 0, state.audioDuration);
@@ -1768,11 +1767,6 @@ function goToFrame(frameNumber) {
 }
 
 function enterPreviewMode() {
-  if (!state.keyframes.length) {
-    setStatus("Add or load camera keyframes first.", "warn");
-    return;
-  }
-
   closeToolbarMenus();
   closeCursorImportMenu();
   appShell.classList.add("panel-closed");
