@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260525-8" />
+    <link rel="stylesheet" href="./styles.css?v=20260525-10" />
     <link rel="manifest" href="./manifest.json" />
     <script
       type="module"
@@ -17,7 +17,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260525-8")
+          navigator.serviceWorker.register("./sw.js?v=20260525-10")
             .then((reg) => console.log("Service Worker registered!"))
             .catch((err) => console.log("Service Worker registration failed:", err));
         });
@@ -87,7 +87,7 @@
         <div class="viewer-toolbar">
           <div>
             <h1>Camera Animation Tool</h1>
-            <span id="appVersionBadge" class="app-version-badge">v2026.05.25.8</span>
+            <span id="appVersionBadge" class="app-version-badge">v2026.05.25.10</span>
             <p id="statusText">Load a GLB or GLTF model to begin.</p>
           </div>
           <div class="toolbar-actions">
@@ -180,7 +180,7 @@
               <div class="timeline-toggles">
                 <button id="snapToggleButton" class="magnet-toggle" type="button" title="Snap timeline to 5-frame steps" aria-label="Snap timeline to 5-frame steps" aria-pressed="false">
                   <!-- Magnet SVG -->
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12a6 6 0 0 0 12 0V3"></path><path d="M18 7H6"></path><path d="M18 11H6"></path></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 16 7-7 3 3-7 7-3-3z"></path><path d="m2 13 3-3 3 3-3 3-3-3z"></path><path d="m16 5 3-3 3 3-3 3-3-3z"></path><path d="M15 12.5a4.5 4.5 0 0 0-5.5-5.5"></path></svg>
                 </button>
                 <button id="loopToggleButton" class="magnet-toggle" type="button" title="Loop playback" aria-label="Loop playback" aria-pressed="false">
                   <!-- Loop SVG -->
@@ -500,6 +500,6 @@
     <audio id="timelineAudio"></audio>
 
      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script defer src="./app.js?v=20260525-8"></script>
+    <script defer src="./app.js?v=20260525-10"></script>
   </body>
 </html>

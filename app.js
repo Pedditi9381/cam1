@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.25.8";
+const APP_VERSION = "v2026.05.25.10";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -216,6 +216,7 @@ const state = {
   autoKeyframe: false,
   aiStartFrameEdited: false,
   aiEndFrameEdited: false,
+  audioWaveformData: [],
 };
 
 function cloneKeyframe(frame) {
@@ -1416,9 +1417,12 @@ function renderAudioTrack() {
   audioTrackLabel.textContent = `${state.audioName} (${state.audioDuration.toFixed(2)}s)`;
 
   const bars = 80;
+  const hasRealData = state.audioWaveformData && state.audioWaveformData.length === bars;
   for (let index = 0; index < bars; index += 1) {
     const bar = document.createElement("span");
-    const height = 20 + Math.round(Math.abs(Math.sin(index * 1.7) * Math.cos(index * 0.31)) * 70);
+    const height = hasRealData
+      ? 10 + Math.round(state.audioWaveformData[index] * 90)
+      : 20 + Math.round(Math.abs(Math.sin(index * 1.7) * Math.cos(index * 0.31)) * 70);
     bar.style.height = `${height}%`;
     audioWaveform.append(bar);
   }
@@ -2812,9 +2816,42 @@ async function loadAudio(file) {
   state.audioUrl = URL.createObjectURL(file);
   state.audioName = file.name;
   state.audioDuration = 0;
+  state.audioWaveformData = [];
   timelineAudio.src = state.audioUrl;
   timelineAudio.load();
   audioStatus.textContent = `Loading audio: ${file.name}`;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const channelData = audioBuffer.getChannelData(0);
+    const bars = 80;
+    const step = Math.ceil(channelData.length / bars);
+    const data = [];
+
+    for (let i = 0; i < bars; i++) {
+      let max = 0;
+      const start = i * step;
+      const end = Math.min(start + step, channelData.length);
+      for (let j = start; j < end; j++) {
+        const val = Math.abs(channelData[j]);
+        if (val > max) max = val;
+      }
+      data.push(max);
+    }
+
+    const maxVal = Math.max(...data) || 1;
+    state.audioWaveformData = data.map((v) => v / maxVal);
+    audioCtx.close();
+
+    if (state.audioDuration > 0) {
+      renderAudioTrack();
+    }
+  } catch (error) {
+    console.error("Failed to decode audio data for waveform:", error);
+    state.audioWaveformData = [];
+  }
 }
 
 async function loadCamera(file) {
