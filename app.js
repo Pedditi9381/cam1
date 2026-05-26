@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.25.14";
+const APP_VERSION = "v2026.05.26.48";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -29,6 +29,7 @@ const audioTrack = document.querySelector("#audioTrack");
 const audioTrackLabel = document.querySelector("#audioTrackLabel");
 const audioWaveform = document.querySelector("#audioWaveform");
 const modelAnimationStatus = document.querySelector("#modelAnimationStatus");
+const aiPickedTargetStatus = document.querySelector("#aiPickedTargetStatus");
 const timelineTrackWrap = document.querySelector(".timeline-track-wrap");
 const timelinePanel = document.querySelector(".timeline-panel");
 const menuDropdowns = Array.from(document.querySelectorAll(".menu-dropdown"));
@@ -74,6 +75,8 @@ const inputs = {
   aiFrameRangeFields: document.querySelector("#aiFrameRangeFields"),
   aiStartFrame: document.querySelector("#aiStartFrameInput"),
   aiEndFrame: document.querySelector("#aiEndFrameInput"),
+  aiObjectSelect: document.querySelector("#aiObjectSelect"),
+  exportCompensation: document.querySelector("#exportCompensationInput"),
 };
 
 const buttons = {
@@ -88,6 +91,7 @@ const buttons = {
   timelineToggle: document.querySelector("#timelineToggleButton"),
   snapToggle: document.querySelector("#snapToggleButton"),
   loopToggle: document.querySelector("#loopToggleButton"),
+  rangesToggle: document.querySelector("#rangesToggleBtn"),
   firstFrame: document.querySelector("#firstFrameButton"),
   prevKeyframe: document.querySelector("#prevKeyframeButton"),
   nextKeyframe: document.querySelector("#nextKeyframeButton"),
@@ -104,6 +108,11 @@ const buttons = {
   syncCurrentValues: document.querySelector("#syncCurrentValuesButton"),
   autoKeyToggle: document.querySelector("#autoKeyToggleButton"),
   aiGenerate: document.querySelector("#aiGenerateButton"),
+  aiPickTarget: document.querySelector("#aiPickTargetButton"),
+  aiClearTarget: document.querySelector("#aiClearTargetButton"),
+  aiToggleObjectNames: document.querySelector("#aiToggleObjectNamesButton"),
+  aiRefreshObjects: document.querySelector("#aiRefreshObjectsButton"),
+  toggleLabels: document.querySelector("#toggleLabelsButton"),
   deleteAudio: document.querySelector("#deleteAudioButton"),
 };
 
@@ -194,8 +203,8 @@ const state = {
   defaultCamera: {
     orbit: { yaw: 0, pitch: 75, radius: 3 },
     target: { x: 0, y: 0, z: 0 },
-    lens: 35,
-    fov: 37.8,
+    lens: 29,
+    fov: 45,
   },
   selectedKeyframeIndex: 0,
   copiedKeyframe: null,
@@ -217,7 +226,17 @@ const state = {
   autoKeyframe: false,
   aiStartFrameEdited: false,
   aiEndFrameEdited: false,
+  aiPickTargetMode: false,
+  aiShowObjectNames: false,
+  aiPickedTarget: null,
+  aiPickedPoints: [],
+  aiSelectionDrag: null,
+  aiHoveredObject: null,
+  aiHoverMaterialState: [],
+  aiSceneObjects: [],
   audioWaveformData: [],
+  cameraRanges: [],
+  showLabels: true,
 };
 
 function cloneKeyframe(frame) {
@@ -244,6 +263,33 @@ function fovToLens(fov) {
   const sensorHeight = 24;
   return sensorHeight / (2 * Math.tan((clamp(fov, 1, 120) * Math.PI) / 360));
 }
+
+function syncFovReadouts(fovValue) {
+  const fov = clamp(parseNumber(fovValue, state.defaultCamera.fov), 1, 120);
+  const lens = fovToLens(fov);
+  if (lensReadout) lensReadout.textContent = `${Math.round(lens)}mm`;
+  if (fovReadout) fovReadout.textContent = `${fov.toFixed(1)}deg FOV`;
+  if (currentFovValueReadout) currentFovValueReadout.textContent = `${fov.toFixed(1)}deg`;
+}
+
+function setFovControl(fovValue, options = {}) {
+  const fov = clamp(parseNumber(fovValue, parseNumber(inputs.lens.value, state.defaultCamera.fov)), 1, 120);
+  inputs.lens.value = String(Number(fov.toFixed(1)));
+  syncFovReadouts(fov);
+  applyCamera(createCurrentKeyframe(getTimelineTime()), { instant: options.instant ?? false });
+  if (state.autoKeyframe && options.autoKey !== false) {
+    recordAutoKeyframe();
+  }
+  return fov;
+}
+
+function zoomFovFromWheel(deltaY) {
+  const currentFov = parseNumber(inputs.lens.value, state.defaultCamera.fov);
+  const nextFov = currentFov + (deltaY * 0.035);
+  return setFovControl(nextFov, { instant: true });
+}
+
+const setLensControl = (lensValue, options = {}) => setFovControl(lensToFov(lensValue), options);
 
 function setStatus(message, tone = "normal") {
   statusText.textContent = message;
@@ -300,7 +346,7 @@ function updateAiFrameRangeState() {
     state.aiStartFrameEdited = false;
     state.aiEndFrameEdited = false;
   } else if (inputs.aiStartFrame && inputs.aiStartFrame.value === "") {
-    inputs.aiStartFrame.value = getVisibleTimelineFrame();
+    inputs.aiStartFrame.value = getVisibleTimelineFrame() + 1;
     state.aiStartFrameEdited = false;
   }
 }
@@ -342,6 +388,17 @@ function positionToOrbit(position, target) {
   const yaw = (Math.atan2(dx, dz) * 180) / Math.PI;
   const pitch = clamp((Math.acos(clamp(dy / radius, -1, 1)) * 180) / Math.PI, 1, 179);
   return { yaw, pitch, radius };
+}
+
+function orbitToPosition(orbit, target) {
+  const theta = (orbit.yaw * Math.PI) / 180;
+  const phi = (orbit.pitch * Math.PI) / 180;
+  const radius = Math.max(orbit.radius, 0.01);
+  return {
+    x: target.x + radius * Math.sin(phi) * Math.sin(theta),
+    y: target.y + radius * Math.cos(phi),
+    z: target.z + radius * Math.sin(phi) * Math.cos(theta),
+  };
 }
 
 function normalizeAngleDegrees(value, fallback) {
@@ -517,7 +574,8 @@ function describeCameraTimeline() {
 }
 
 function createCurrentKeyframe(time = getTimelineTime()) {
-  const lens = parseNumber(inputs.lens.value, state.defaultCamera.lens);
+  const fov = clamp(parseNumber(inputs.lens.value, state.defaultCamera.fov), 1, 120);
+  const lens = fovToLens(fov);
   const easingSelect = document.querySelector("#easingSelect");
 
   return {
@@ -529,7 +587,7 @@ function createCurrentKeyframe(time = getTimelineTime()) {
     },
     target: readCurrentTarget(),
     lens,
-    fov: lensToFov(lens),
+    fov,
     shake: parseNumber(inputs.shakeIntensity.value, 0.3),
     easing: easingSelect ? easingSelect.value : 'easeInOut',
   };
@@ -549,6 +607,553 @@ function formatOrbit(orbit) {
 
 function formatTarget(target) {
   return `${target.x.toFixed(3)}m ${target.y.toFixed(3)}m ${target.z.toFixed(3)}m`;
+}
+
+function updateAiPickedTargetUi() {
+  if (buttons.aiPickTarget) {
+    buttons.aiPickTarget.classList.toggle("active", state.aiPickTargetMode);
+    buttons.aiPickTarget.setAttribute("aria-pressed", String(state.aiPickTargetMode));
+  }
+
+  if (aiPickedTargetStatus) {
+    const pickedCount = state.aiPickedPoints.length;
+    aiPickedTargetStatus.textContent = state.aiPickedTarget
+      ? `${state.aiPickedTarget.kind === "object" ? "Selected object" : "Picked area"}: ${state.aiPickedTarget.name || formatTarget(state.aiPickedTarget.position)}`
+      : (state.aiPickTargetMode ? `Click to pick 2 points. Picked ${pickedCount}/2.` : "No picked target.");
+  }
+
+  modelViewer.querySelectorAll(".ai-picked-target").forEach((node) => node.remove());
+  const markerPoints = state.aiPickedPoints.length
+    ? state.aiPickedPoints
+    : (state.aiPickedTarget ? [state.aiPickedTarget] : []);
+
+  markerPoints.forEach((point, index) => {
+    const hotspot = document.createElement("button");
+    hotspot.className = "hotspot ai-picked-target";
+    hotspot.setAttribute("slot", `hotspot-ai-picked-target-${index}`);
+    const pos = point.surfacePosition || point.position;
+    const norm = point.surfaceNormal || point.normal || { x: 0, y: 1, z: 0 };
+    hotspot.setAttribute("data-position", formatTarget(pos).replaceAll("m", ""));
+    hotspot.setAttribute("data-normal", `${norm.x} ${norm.y} ${norm.z}`);
+    hotspot.setAttribute("aria-label", `AI picked zoom target point ${index + 1}`);
+
+    const dot = document.createElement("span");
+    dot.className = "hotspot-annotation";
+    hotspot.append(dot);
+    modelViewer.append(hotspot);
+  });
+
+  renderObjectNamesInViewer();
+}
+
+function toggleAiPickTargetMode() {
+  state.aiPickTargetMode = !state.aiPickTargetMode;
+  if (state.aiPickTargetMode) {
+    state.aiPickedPoints = [];
+    state.aiPickedTarget = null;
+    clearAiHoverObject();
+  } else {
+    clearAiHoverObject();
+  }
+  updateAiPickedTargetUi();
+  setStatus(state.aiPickTargetMode ? "AI target picking enabled. Click to pick 2 points." : "AI target picking disabled.");
+}
+
+function clearAiPickedTarget() {
+  state.aiPickTargetMode = false;
+  state.aiPickedTarget = null;
+  state.aiPickedPoints = [];
+  state.aiSelectionDrag = null;
+  clearAiHoverObject();
+  updateAiPickedTargetUi();
+  setStatus("Cleared AI selected view range.");
+}
+
+function getAiSurfaceHit(clientX, clientY) {
+  if (typeof modelViewer.positionAndNormalFromPoint !== "function") return null;
+  const hit = modelViewer.positionAndNormalFromPoint(clientX, clientY);
+  if (!hit?.position) return null;
+  return {
+    position: {
+      x: parseNumber(hit.position.x, 0),
+      y: parseNumber(hit.position.y, 0),
+      z: parseNumber(hit.position.z, 0),
+    },
+    normal: {
+      x: parseNumber(hit.normal?.x, 0),
+      y: parseNumber(hit.normal?.y, 1),
+      z: parseNumber(hit.normal?.z, 0),
+    },
+  };
+}
+
+function getThreeInternals() {
+  try {
+    const roots = [];
+    if (modelViewer?.[Symbol.for("three3d")]) roots.push(modelViewer[Symbol.for("three3d")]);
+    if (modelViewer?.model) roots.push(modelViewer.model);
+    Object.getOwnPropertySymbols(modelViewer || {}).forEach((symbol) => {
+      const value = modelViewer[symbol];
+      if (value && typeof value === "object") roots.push(value);
+    });
+    return roots[0] || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function findThreeSceneCandidates(value, seen = new Set(), depth = 0, results = []) {
+  if (!value || typeof value !== "object" || seen.has(value) || depth > 5) return results;
+  seen.add(value);
+
+  if (typeof value.traverse === "function" && Array.isArray(value.children)) {
+    results.push(value);
+  }
+
+  const keys = [
+    "scene",
+    "model",
+    "root",
+    "group",
+    "gltf",
+    "asset",
+    "three",
+    "threeRenderer",
+    "modelScene",
+    "sceneGraph",
+  ];
+
+  keys.forEach((key) => {
+    if (value[key] && typeof value[key] === "object") {
+      findThreeSceneCandidates(value[key], seen, depth + 1, results);
+    }
+  });
+
+  if (depth < 2) {
+    Object.getOwnPropertySymbols(value).forEach((symbol) => {
+      const child = value[symbol];
+      if (child && typeof child === "object") {
+        findThreeSceneCandidates(child, seen, depth + 1, results);
+      }
+    });
+  }
+
+  return results;
+}
+
+function getThreeSceneCandidates() {
+  const candidates = [];
+  const addCandidates = (root) => {
+    findThreeSceneCandidates(root).forEach((scene) => {
+      if (!candidates.includes(scene)) candidates.push(scene);
+    });
+  };
+
+  try {
+    if (modelViewer?.[Symbol.for("three3d")]) addCandidates(modelViewer[Symbol.for("three3d")]);
+    if (modelViewer?.model) addCandidates(modelViewer.model);
+    Object.getOwnPropertySymbols(modelViewer || {}).forEach((symbol) => addCandidates(modelViewer[symbol]));
+  } catch (error) {
+    console.warn("Could not scan model-viewer scene candidates:", error);
+  }
+
+  return candidates;
+}
+
+function findThreeCamera(value, seen = new Set(), depth = 0) {
+  if (!value || typeof value !== "object" || seen.has(value) || depth > 3) return null;
+  seen.add(value);
+
+  if (value.isCamera) return value;
+  const preferredKeys = ["camera", "activeCamera", "perspectiveCamera", "defaultCamera", "threeCamera"];
+  for (const key of preferredKeys) {
+    if (value[key]?.isCamera) return value[key];
+  }
+
+  for (const key of preferredKeys) {
+    const found = findThreeCamera(value[key], seen, depth + 1);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function getBestObjectName(object) {
+  let current = object;
+  while (current && current !== getThreeScene()) {
+    const material = Array.isArray(current.material) ? current.material.find((item) => item?.name) : current.material;
+    const name = current.name || current.userData?.name || current.userData?.label || current.userData?.title || material?.name;
+    if (name && !isGenericSceneName(normalizeSearchText(name))) return String(name);
+    current = current.parent;
+  }
+  const material = Array.isArray(object?.material) ? object.material.find((item) => item?.name) : object?.material;
+  return object?.name || material?.name || "Selected object";
+}
+
+function getNamedAncestorOrSelf(object, scene) {
+  let selected = object;
+  let current = object;
+  while (current?.parent && current.parent !== scene) {
+    const name = current.parent.name || current.parent.userData?.name || current.parent.userData?.label;
+    if (name && !isGenericSceneName(normalizeSearchText(name))) {
+      selected = current.parent;
+      break;
+    }
+    current = current.parent;
+  }
+  return selected;
+}
+
+function buildObjectTarget(object, fallbackObject = object) {
+  const bounds = getObjectWorldBounds(object) || getObjectWorldBounds(fallbackObject);
+  if (!bounds) return null;
+  return {
+    kind: "object",
+    name: getBestObjectName(object),
+    position: bounds.center,
+    normal: { x: 0, y: 1, z: 0 },
+    size: Math.max(bounds.size, 0.35),
+    object,
+  };
+}
+
+function collectAiSceneObjects() {
+  const scenes = getThreeSceneCandidates();
+  const seenObjects = new Set();
+  const items = [];
+
+  if (!scenes.length) {
+    state.aiSceneObjects = [];
+    return state.aiSceneObjects;
+  }
+
+  scenes.forEach((scene) => {
+    scene.traverse((object) => {
+      if (!object?.visible || (!object.isMesh && !object.geometry)) return;
+      const selected = getNamedAncestorOrSelf(object, scene);
+      if (!selected || seenObjects.has(selected)) return;
+
+      const target = buildObjectTarget(selected, object);
+      if (!target) return;
+
+      seenObjects.add(selected);
+      items.push({
+        id: String(items.length),
+        object: selected,
+        target,
+        label: target.name || `Object ${items.length + 1}`,
+      });
+    });
+  });
+
+  if (!items.length) {
+    scenes.forEach((scene) => {
+      const target = buildObjectTarget(scene);
+      if (!target) return;
+      items.push({
+        id: String(items.length),
+        object: scene,
+        target: { ...target, name: "Full GLB Model" },
+        label: "Full GLB Model",
+      });
+    });
+  }
+
+  state.aiSceneObjects = items.sort((a, b) => a.label.localeCompare(b.label));
+  return state.aiSceneObjects;
+}
+
+function renderAiObjectSelect() {
+  if (!inputs.aiObjectSelect) return;
+  const previous = inputs.aiObjectSelect.value;
+  inputs.aiObjectSelect.innerHTML = "";
+  inputs.aiObjectSelect.append(new Option("Select object from GLB...", ""));
+
+  state.aiSceneObjects.forEach((item, index) => {
+    const option = new Option(item.label, String(index));
+    inputs.aiObjectSelect.append(option);
+  });
+
+  if (previous && Number(previous) < state.aiSceneObjects.length) {
+    inputs.aiObjectSelect.value = previous;
+  }
+}
+
+function renderObjectNamesInViewer() {
+  // Remove existing object label hotspots
+  modelViewer.querySelectorAll(".ai-object-label-hotspot").forEach((node) => node.remove());
+
+  if (!state.aiShowObjectNames) return;
+
+  // Make sure we have collected objects
+  if (!state.aiSceneObjects || state.aiSceneObjects.length === 0) {
+    collectAiSceneObjects();
+  }
+
+  state.aiSceneObjects.forEach((item) => {
+    if (!item.target || !item.target.position) return;
+
+    const hotspot = document.createElement("button");
+    hotspot.className = "hotspot ai-object-label-hotspot";
+    hotspot.setAttribute("slot", `hotspot-ai-object-label-${item.id}`);
+    
+    const pos = item.target.position;
+    hotspot.setAttribute("data-position", `${pos.x} ${pos.y} ${pos.z}`);
+    hotspot.setAttribute("data-normal", "0 1 0");
+    hotspot.setAttribute("aria-label", `Select object ${item.label}`);
+
+    // Check if this object is the currently picked target
+    const isSelected = state.aiPickedTarget && 
+      (state.aiPickedTarget.object === item.object || 
+       (state.aiPickedTarget.kind === "object" && state.aiPickedTarget.name === item.label));
+    if (isSelected) {
+      hotspot.classList.add("selected");
+    }
+
+    const visible = isThreeObjectVisible(item.object);
+    if (!visible) {
+      hotspot.style.display = "none";
+      hotspot.style.opacity = "0";
+      hotspot.style.pointerEvents = "none";
+    } else {
+      hotspot.style.display = "block";
+      hotspot.style.opacity = "1";
+      hotspot.style.pointerEvents = "auto";
+    }
+
+    const annotation = document.createElement("span");
+    annotation.className = "hotspot-annotation ai-object-label-annotation";
+    annotation.textContent = item.label;
+    hotspot.append(annotation);
+
+    hotspot.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (inputs.aiObjectSelect) {
+        inputs.aiObjectSelect.value = item.id;
+        selectAiObjectByIndex(item.id);
+      }
+    });
+
+    modelViewer.append(hotspot);
+  });
+}
+
+function refreshAiObjectList() {
+  collectAiSceneObjects();
+  renderAiObjectSelect();
+  renderObjectNamesInViewer();
+  const count = state.aiSceneObjects.length;
+  setStatus(count ? `Found ${count} selectable GLB object${count === 1 ? "" : "s"}.` : "No separate GLB objects found. Use point picking fallback.", count ? "normal" : "warn");
+}
+
+function selectAiObjectByIndex(indexValue) {
+  const index = parseInt(indexValue, 10);
+  const item = Number.isFinite(index) ? state.aiSceneObjects[index] : null;
+  if (!item) return;
+
+  state.aiPickedTarget = {
+    ...item.target,
+    object: item.object,
+  };
+  state.aiPickedPoints = [];
+  state.aiPickTargetMode = false;
+  clearAiHoverObject();
+  updateAiPickedTargetUi();
+  if (inputs.aiPrompt && !/\b(zoom|focus|target|show|look|move|object|picked|selected)\b/i.test(inputs.aiPrompt.value)) {
+    inputs.aiPrompt.value = `${inputs.aiPrompt.value.trim()} frame selected object`.trim();
+  }
+  setStatus(`AI selected object: ${item.label}. Generate to frame it.`);
+}
+
+function getObjectTargetNearSurfaceHit(surfaceHit) {
+  if (!window.THREE || !surfaceHit?.position) return null;
+  const scene = getThreeScene();
+  if (!scene?.traverse) return null;
+
+  const point = new THREE.Vector3(surfaceHit.position.x, surfaceHit.position.y, surfaceHit.position.z);
+  let best = null;
+  scene.traverse((object) => {
+    if (!object?.visible || (!object.isMesh && !object.geometry)) return;
+    const selected = getNamedAncestorOrSelf(object, scene);
+    const bounds = getObjectWorldBounds(selected) || getObjectWorldBounds(object);
+    if (!bounds?.box) return;
+
+    const distance = bounds.box.distanceToPoint(point);
+    const normalizedDistance = distance / Math.max(bounds.size, 0.001);
+    if (normalizedDistance > 1.25) return;
+
+    const name = getBestObjectName(selected);
+    const namedBonus = name && name !== "Selected object" ? -0.15 : 0;
+    const score = normalizedDistance + (bounds.size * 0.01) + namedBonus;
+    if (!best || score < best.score) {
+      best = { object: selected, fallbackObject: object, score };
+    }
+  });
+
+  return best ? buildObjectTarget(best.object, best.fallbackObject) : null;
+}
+
+function forEachObjectMaterial(object, callback) {
+  object?.traverse?.((child) => {
+    const materials = Array.isArray(child.material) ? child.material : (child.material ? [child.material] : []);
+    materials.forEach((material) => material && callback(material));
+  });
+}
+
+function clearAiHoverObject() {
+  state.aiHoverMaterialState.forEach((entry) => {
+    if (entry.material.emissive && entry.emissive !== null) {
+      entry.material.emissive.setHex(entry.emissive);
+    }
+    if (entry.material.color && entry.color !== null) {
+      entry.material.color.setHex(entry.color);
+    }
+    entry.material.needsUpdate = true;
+  });
+  state.aiHoverMaterialState = [];
+  state.aiHoveredObject = null;
+}
+
+function setAiHoverObject(object) {
+  if (state.aiHoveredObject === object) return;
+  clearAiHoverObject();
+  if (!object) return;
+
+  state.aiHoveredObject = object;
+  const seen = new Set();
+  forEachObjectMaterial(object, (material) => {
+    if (seen.has(material)) return;
+    seen.add(material);
+    state.aiHoverMaterialState.push({
+      material,
+      emissive: material.emissive ? material.emissive.getHex() : null,
+      color: material.color ? material.color.getHex() : null,
+    });
+    if (material.emissive) {
+      material.emissive.setHex(0x5b8cff);
+      material.emissiveIntensity = Math.max(material.emissiveIntensity || 0, 0.22);
+    } else if (material.color) {
+      material.color.lerp(new THREE.Color(0x8fb8ff), 0.22);
+    }
+    material.needsUpdate = true;
+  });
+}
+
+function updateAiObjectHover(event) {
+  if (state.aiHoveredObject) clearAiHoverObject();
+}
+
+function getObjectTargetFromPointer(clientX, clientY) {
+  if (!window.THREE) return null;
+  const scene = getThreeScene();
+  const three = getThreeInternals();
+  const camera = findThreeCamera(three) || findThreeCamera(scene);
+  const surfaceHit = getAiSurfaceHit(clientX, clientY);
+  if (!scene?.children?.length) return null;
+  if (!camera) {
+    const target = getObjectTargetNearSurfaceHit(surfaceHit);
+    if (target && surfaceHit) {
+      target.surfacePosition = surfaceHit.position;
+      target.surfaceNormal = surfaceHit.normal;
+    }
+    return target;
+  }
+
+  const rect = modelViewer.getBoundingClientRect();
+  const pointer = new THREE.Vector2(
+    ((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+    -(((clientY - rect.top) / Math.max(rect.height, 1)) * 2 - 1),
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(pointer, camera);
+
+  const hits = raycaster.intersectObjects(scene.children, true)
+    .filter((hit) => hit.object?.visible !== false);
+  if (!hits.length) {
+    const target = getObjectTargetNearSurfaceHit(surfaceHit);
+    if (target && surfaceHit) {
+      target.surfacePosition = surfaceHit.position;
+      target.surfaceNormal = surfaceHit.normal;
+    }
+    return target;
+  }
+
+  const mesh = hits[0].object;
+  const selected = getNamedAncestorOrSelf(mesh, scene);
+  const target = buildObjectTarget(selected, mesh) || getObjectTargetNearSurfaceHit(surfaceHit);
+  if (target && surfaceHit) {
+    target.surfacePosition = surfaceHit.position;
+    target.surfaceNormal = surfaceHit.normal;
+  }
+  return target;
+}
+
+function buildAiPickedAreaTarget(points) {
+  const [first, second] = points;
+  if (!first || !second) return first || null;
+  const position = {
+    x: (first.position.x + second.position.x) / 2,
+    y: (first.position.y + second.position.y) / 2,
+    z: (first.position.z + second.position.z) / 2,
+  };
+  const normal = {
+    x: (first.normal.x + second.normal.x) / 2,
+    y: (first.normal.y + second.normal.y) / 2,
+    z: (first.normal.z + second.normal.z) / 2,
+  };
+  const diagonal = Math.hypot(
+    first.position.x - second.position.x,
+    first.position.y - second.position.y,
+    first.position.z - second.position.z,
+  );
+  return {
+    name: "Picked area",
+    position,
+    normal,
+    size: Math.max(diagonal, 0.35),
+  };
+}
+
+function pickAiTargetFromPointer(event) {
+  if (!state.aiPickTargetMode) return false;
+  if (event.button !== undefined && event.button !== 0) return false;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+
+  const hit = getAiSurfaceHit(event.clientX, event.clientY);
+  if (!hit) {
+    setStatus("No model surface under cursor. Click directly on the GLB mesh.", "warn");
+    return true;
+  }
+
+  const pickedPoint = {
+    name: `Picked point ${state.aiPickedPoints.length + 1}`,
+    ...hit,
+    size: 0.35,
+  };
+
+  state.aiPickedPoints.push(pickedPoint);
+  if (state.aiPickedPoints.length === 1) {
+    state.aiPickedTarget = buildAiPickedAreaTarget(state.aiPickedPoints);
+    updateAiPickedTargetUi();
+    setStatus(`First AI area point picked: ${formatTarget(pickedPoint.position)}. Pick second point.`);
+    return true;
+  }
+
+  state.aiPickedPoints = state.aiPickedPoints.slice(0, 2);
+  state.aiPickedTarget = buildAiPickedAreaTarget(state.aiPickedPoints);
+  state.aiPickTargetMode = false;
+  clearAiHoverObject();
+  updateAiPickedTargetUi();
+
+  if (inputs.aiPrompt && !/\b(zoom|focus|target|show|look|move|point|area|picked|selected)\b/i.test(inputs.aiPrompt.value)) {
+    inputs.aiPrompt.value = `${inputs.aiPrompt.value.trim()} zoom to picked area`.trim();
+  }
+
+  setStatus(`AI picked area center: ${formatTarget(state.aiPickedTarget.position)}. Generate to frame that area.`);
+  return true;
 }
 
 function updateCurrentValuesDisplay(frame = createCurrentKeyframe(getTimelineTime())) {
@@ -614,17 +1219,11 @@ function captureLiveCameraFrame(time = getTimelineTime()) {
     }
   }
 
-  try {
-    const fov = modelViewer.getFieldOfView?.();
-    if (fov) {
-      frame.fov = parseNumber(fov, frame.fov);
-      frame.lens = fovToLens(frame.fov);
-    }
-  } catch (error) {
-    const fieldOfView = parseNumber(parseFloat(modelViewer.fieldOfView), frame.fov);
-    frame.fov = fieldOfView;
-    frame.lens = fovToLens(fieldOfView);
-  }
+  // The lens/FOV control is the source of truth for saved keyframes.
+  // model-viewer can report a stale getFieldOfView() immediately after UI edits,
+  // which made zoom keys export as the same FOV.
+  frame.fov = clamp(parseNumber(inputs.lens.value, frame.fov ?? state.defaultCamera.fov), 1, 120);
+  frame.lens = fovToLens(frame.fov);
 
   return frame;
 }
@@ -651,10 +1250,8 @@ function syncInputsFromLiveCamera() {
 
     const fov = modelViewer.getFieldOfView();
     if (fov) {
-      const lens = fovToLens(fov);
-      inputs.lens.value = Math.round(lens);
-      lensReadout.textContent = `${Math.round(lens)}mm`;
-      fovReadout.textContent = `${fov.toFixed(1)}deg FOV`;
+      inputs.lens.value = Number(clamp(fov, 1, 120).toFixed(1));
+      syncFovReadouts(fov);
       didSync = true;
     }
   } catch (error) {
@@ -688,8 +1285,12 @@ function syncInputsFromLiveCamera() {
 
 function applyCamera(frame, options = {}) {
   const smooth = clamp(parseNumber(inputs.smooth.value, 0.35), 0, 1);
-  const lens = clamp(parseNumber(frame.lens, parseNumber(inputs.lens.value, 35)), 12, 135);
-  const fov = lensToFov(lens);
+  const inputFov = parseNumber(inputs.lens.value, state.defaultCamera.fov);
+  const hasFrameFov = Number.isFinite(parseNumber(frame.fov, NaN));
+  const fov = hasFrameFov
+    ? clamp(parseNumber(frame.fov, inputFov), 1, 120)
+    : clamp(inputFov, 1, 120);
+  const lens = clamp(fovToLens(fov), 12, 135);
   modelViewer.interpolationDecay = options.instant ? "0" : String(smooth);
 
   // Apply camera shake noise offsets
@@ -739,16 +1340,15 @@ function applyCamera(frame, options = {}) {
   inputs.targetX.value = frame.target.x.toFixed(2);
   inputs.targetY.value = frame.target.y.toFixed(2);
   inputs.targetZ.value = frame.target.z.toFixed(2);
-  inputs.lens.value = lens.toFixed(0);
-  lensReadout.textContent = `${lens.toFixed(0)}mm`;
-  fovReadout.textContent = `${fov.toFixed(1)}deg FOV`;
+  inputs.lens.value = Number(fov.toFixed(1));
+  syncFovReadouts(fov);
   updateCurrentValuesDisplay({ ...frame, fov });
 
   // Update lens pill active states
-  const lensValRounded = Math.round(lens);
+  const fovRounded = Math.round(fov);
   document.querySelectorAll(".lens-pills button").forEach((btn) => {
-    const pillLensVal = Number(btn.dataset.lens);
-    btn.classList.toggle("active", pillLensVal === lensValRounded);
+    const pillFovVal = Number(btn.dataset.fov);
+    btn.classList.toggle("active", pillFovVal === fovRounded);
   });
 }
 
@@ -759,6 +1359,114 @@ function lerp(a, b, t) {
 function lerpAngle(a, b, t) {
   let delta = ((b - a + 540) % 360) - 180;
   return a + delta * t;
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isGenericSceneName(name) {
+  return /^(scene|root|armature|camera|light|mesh|object|node|empty|group|default|material)\d*$/i.test(name);
+}
+
+function getObjectWorldBounds(object) {
+  if (!window.THREE || !object) return null;
+  try {
+    object.updateMatrixWorld?.(true);
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return null;
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+    return {
+      center: { x: center.x, y: center.y, z: center.z },
+      size: Math.max(size.x, size.y, size.z, 0.01),
+      box,
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function resolveAiPromptTarget(query) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return null;
+  const pickedKeywords = /\b(picked|selected|marked|draw|drawn|pencil|point|spot|area|region|two points|here|there|this|place)\b/.test(normalizedQuery);
+
+  let bestMatch = null;
+  const considerMatch = (candidate) => {
+    const normalizedName = normalizeSearchText(candidate.name);
+    if (!normalizedName || normalizedName.length < 2 || isGenericSceneName(normalizedName)) return;
+
+    const tokens = normalizedName.split(" ").filter((token) => token.length > 1);
+    const exact = normalizedQuery.includes(normalizedName);
+    const tokenMatch = tokens.length >= 2 && tokens.every((token) => normalizedQuery.includes(token));
+    if (!exact && !tokenMatch) return;
+
+    const score = (exact ? 1000 : 0) + normalizedName.length + (candidate.kind === "object" ? 50 : 0);
+    if (!bestMatch || score > bestMatch.score) {
+      bestMatch = { ...candidate, score };
+    }
+  };
+
+  state.labels.forEach((label) => {
+    const names = [
+      label.name,
+      label.nodeName,
+      label.text,
+    ].filter(Boolean);
+    names.forEach((name) => {
+      considerMatch({
+        kind: "label",
+        name,
+        target: { ...label.position },
+        size: 0.5,
+      });
+    });
+  });
+
+  const scene = getThreeScene();
+  if (scene?.traverse) {
+    scene.traverse((object) => {
+      const names = [
+        object.name,
+        object.userData?.name,
+        object.userData?.label,
+        object.userData?.title,
+      ].filter(Boolean);
+      if (!names.length) return;
+
+      const bounds = getObjectWorldBounds(object);
+      if (!bounds) return;
+
+      names.forEach((name) => {
+        considerMatch({
+          kind: "object",
+          name,
+          target: bounds.center,
+          size: bounds.size,
+        });
+      });
+    });
+  }
+
+  if (state.aiPickedTarget && (!bestMatch || pickedKeywords)) {
+    return {
+      kind: state.aiPickedTarget.kind || "picked",
+      name: state.aiPickedTarget.name || "Picked area",
+      target: { ...state.aiPickedTarget.position },
+      size: state.aiPickedTarget.size || 0.35,
+      score: 2000,
+    };
+  }
+
+  return bestMatch;
 }
 
 function generateAiSequence(promptText) {
@@ -784,15 +1492,15 @@ function generateAiSequence(promptText) {
   // 1. Frame Range Parsing. Default starts at playhead; custom range is opt-in.
   const useCustomRange = !!inputs.aiCustomRange?.checked;
   let startFrame = useCustomRange && state.aiStartFrameEdited && inputs.aiStartFrame?.value !== ""
-    ? parseInt(inputs.aiStartFrame.value, 10)
+    ? parseInt(inputs.aiStartFrame.value, 10) - 1
     : getVisibleTimelineFrame();
-  let endFrame = useCustomRange && state.aiEndFrameEdited && inputs.aiEndFrame?.value ? parseInt(inputs.aiEndFrame.value, 10) : null;
+  let endFrame = useCustomRange && state.aiEndFrameEdited && inputs.aiEndFrame?.value ? parseInt(inputs.aiEndFrame.value, 10) - 1 : null;
 
   // Parse prompt ranges only when custom frame range is enabled.
   const rangeMatch = query.match(/(?:frame\s+)?(\d+)\s*(?:to|-)\s*(?:frame\s+)?(\d+)/i);
   if (useCustomRange && rangeMatch) {
-    startFrame = parseInt(rangeMatch[1], 10);
-    endFrame = parseInt(rangeMatch[2], 10);
+    startFrame = parseInt(rangeMatch[1], 10) - 1;
+    endFrame = parseInt(rangeMatch[2], 10) - 1;
   }
 
   // Parse duration from prompt (e.g. "5s", "5 seconds", "2.5s")
@@ -837,10 +1545,10 @@ function generateAiSequence(promptText) {
 
   // Synchronize UI inputs to match the resolved range
   if (inputs.aiStartFrame) {
-    inputs.aiStartFrame.value = startFrame;
+    inputs.aiStartFrame.value = startFrame + 1;
   }
   if (inputs.aiEndFrame) {
-    inputs.aiEndFrame.value = endFrame;
+    inputs.aiEndFrame.value = endFrame !== null ? endFrame + 1 : "";
   }
   state.aiStartFrameEdited = false;
   state.aiEndFrameEdited = false;
@@ -860,13 +1568,15 @@ function generateAiSequence(promptText) {
   }
 
   // 3. Lens/Focal Length Parsing. Default keeps the user's current lens.
-  let lens = currentCameraFrame.lens || 35;
+  let lens = currentCameraFrame.lens || 29;
   if (hasKeyword(["wide", "establishing"])) {
     lens = 24;
-  } else if (hasKeyword(["close-up", "closeup", "detail", "telephoto", "tight"])) {
+  } else if (hasKeyword(["close-up", "closeup", "detail", "telephoto", "tight", "zoom", "focus"])) {
     lens = 85;
   } else if (hasKeyword(["macro", "portrait"])) {
     lens = 55;
+  } else if (hasKeyword(["zoom in", "zoom-in", "push", "closer"]) && lens < 50) {
+    lens = 50;
   }
 
   // 3.5. Camera Shake Parsing
@@ -941,10 +1651,25 @@ function generateAiSequence(promptText) {
 
   let startRadius = currentRadius;
 
-  // Orbit check
-  const isOrbit = hasKeyword(["orbit", "sweep", "spin", "around", "rotation"]);
-  const isPush = hasKeyword(["push", "dolly in", "dolly-in", "zoom in", "zoom-in", "closer"]);
+  // Target resolution based on loaded scene objects and labels.
+  let resolvedTarget = { ...currentTarget };
+  const promptTarget = resolveAiPromptTarget(query);
+  if (promptTarget) {
+    resolvedTarget = { ...promptTarget.target };
+  }
+
+  // Orbit/Push/Pull Checks
+  const isOrbit = hasKeyword(["orbit", "sweep", "spin", "around", "rotation", "rotate"]);
+  let isPush = hasKeyword(["push", "dolly in", "dolly-in", "zoom in", "zoom-in", "closer", "zoom", "focus", "look at", "go to", "detail", "view", "show", "target", "pan to", "move to"]);
   const isPull = hasKeyword(["pull", "dolly out", "dolly-out", "zoom out", "zoom-out", "reveal"]);
+  if (isPull) {
+    isPush = false;
+  }
+
+  // If a target is matched but no movement keyword is specified, default to push in.
+  if (promptTarget && !isOrbit && !isPush && !isPull) {
+    isPush = true;
+  }
 
   // Keep the current screen angle as the anchor. Direction words modify the
   // ending motion relative to the user's camera instead of jumping to fixed
@@ -969,7 +1694,7 @@ function generateAiSequence(promptText) {
   }
 
   let generatedFrames = [];
-  const makeAiFrame = (time, orbit, target = currentTarget, lensValue = lens) => ({
+  const makeAiFrame = (time, orbit, target = resolvedTarget, lensValue = lens) => ({
     time,
     orbit,
     target: { ...target },
@@ -999,17 +1724,66 @@ function generateAiSequence(promptText) {
       const pitch = clamp(currentPitch + (pitchOffset * ratio), 1, 179);
       const radius = startRadius * (hasKeyword("closer") ? 0.8 : 1.0);
 
-      generatedFrames.push(makeAiFrame(t, { yaw, pitch, radius }));
+      // Interpolate focus target to match resolved label position smoothly
+      const interpolatedTarget = {
+        x: lerp(currentTarget.x, resolvedTarget.x, ratio),
+        y: lerp(currentTarget.y, resolvedTarget.y, ratio),
+        z: lerp(currentTarget.z, resolvedTarget.z, ratio),
+      };
+
+      generatedFrames.push(makeAiFrame(t, { yaw, pitch, radius }, interpolatedTarget));
     }
   } else if (isPush) {
-    const factor = hasKeyword(["tight", "close"]) ? 0.4 : 0.65;
+    let factor = promptTarget ? 0.72 : 0.65;
+    let sizeMultiplier = promptTarget?.kind === "picked" ? 4.2 : 3.2;
+    let allowWiderThanStart = false;
+
+    if (hasKeyword(["wide", "loose", "safe", "frame"])) {
+      factor = promptTarget ? 0.9 : 0.82;
+      sizeMultiplier = promptTarget?.kind === "picked" ? 5.2 : 4.0;
+      allowWiderThanStart = true;
+    } else if (hasKeyword(["medium", "normal", "not close"])) {
+      factor = promptTarget ? 0.78 : 0.7;
+      sizeMultiplier = promptTarget?.kind === "picked" ? 4.6 : 3.5;
+    } else if (hasKeyword(["tight", "close"])) {
+      factor = promptTarget ? 0.52 : 0.4;
+      sizeMultiplier = promptTarget?.kind === "picked" ? 2.8 : 2.2;
+    }
+
+    const currentCameraPosition = orbitToPosition(currentCameraFrame.orbit, currentTarget);
+    const distanceToResolvedTarget = Math.hypot(
+      currentCameraPosition.x - resolvedTarget.x,
+      currentCameraPosition.y - resolvedTarget.y,
+      currentCameraPosition.z - resolvedTarget.z,
+    );
+    const pushBaseRadius = promptTarget ? Math.max(distanceToResolvedTarget, startRadius) : startRadius;
+    const maxZoomInRadius = promptTarget
+      ? Math.min(distanceToResolvedTarget, startRadius) * 0.86
+      : startRadius * 0.86;
+    const desiredRadius = Math.max(pushBaseRadius * factor, promptTarget ? promptTarget.size * sizeMultiplier : 0.5, 0.45);
+    const finalPushRadius = promptTarget && !allowWiderThanStart
+      ? Math.min(desiredRadius, maxZoomInRadius)
+      : desiredRadius;
+    let endOrbit = {
+      yaw: currentYaw + yawOffset,
+      pitch: clamp(currentPitch + pitchOffset, 1, 179),
+      radius: Math.max(finalPushRadius, 0.35),
+    };
+
+    if (promptTarget) {
+      const directionLength = Math.max(distanceToResolvedTarget, 0.001);
+      const endDistance = Math.max(finalPushRadius, 0.35);
+      const endPosition = {
+        x: resolvedTarget.x + ((currentCameraPosition.x - resolvedTarget.x) / directionLength) * endDistance,
+        y: resolvedTarget.y + ((currentCameraPosition.y - resolvedTarget.y) / directionLength) * endDistance,
+        z: resolvedTarget.z + ((currentCameraPosition.z - resolvedTarget.z) / directionLength) * endDistance,
+      };
+      endOrbit = positionToOrbit(endPosition, resolvedTarget);
+    }
+
     generatedFrames = [
       startFrameData,
-      makeAiFrame(endTime, {
-        yaw: currentYaw + yawOffset,
-        pitch: clamp(currentPitch + pitchOffset, 1, 179),
-        radius: startRadius * factor,
-      })
+      makeAiFrame(endTime, endOrbit, resolvedTarget)
     ];
   } else if (isPull) {
     const factor = hasKeyword(["far", "wide"]) ? 1.8 : 1.4;
@@ -1019,7 +1793,7 @@ function generateAiSequence(promptText) {
         yaw: currentYaw + yawOffset,
         pitch: clamp(currentPitch + pitchOffset, 1, 179),
         radius: startRadius * factor,
-      })
+      }, resolvedTarget)
     ];
   } else {
     // Default motion: reveal/sweep/pan from current direction
@@ -1030,7 +1804,7 @@ function generateAiSequence(promptText) {
         yaw: currentYaw + yawOffset + endYawOffset,
         pitch: clamp(currentPitch + pitchOffset - 10, 1, 179),
         radius: startRadius,
-      })
+      }, resolvedTarget)
     ];
   }
 
@@ -1072,7 +1846,12 @@ function generateAiSequence(promptText) {
   updatePlaybackButtons();
   drawCameraPath();
 
-  setStatus(`AI start captured: ${formatOrbit(startFrameData.orbit)} at frame ${startFrame}. Press Play to preview.`);
+  if (labelMatchedName) {
+    setStatus(`AI Camera Director: Zooming to "${labelMatchedName}" from frame ${startFrame} to ${endFrame}. Press Play to preview.`);
+  } else {
+  const targetText = promptTarget ? ` Target: ${promptTarget.name}.` : "";
+  setStatus(`AI start captured: ${formatOrbit(startFrameData.orbit)} at frame ${startFrame}.${targetText} Press Play to preview.`);
+}
 }
 
 function getEasingValue(type, t) {
@@ -1163,57 +1942,8 @@ function drawCameraPath() {
   });
   pathPoints = [];
 
-  if (!state.keyframes || state.keyframes.length === 0) {
-    if (modelViewer.requestUpdate) modelViewer.requestUpdate();
-    return;
-  }
-
-  // 1. Plot the camera path line in 3D
-  const positions = state.keyframes.map(frame => {
-    const pos = getCameraPosition(frame);
-    return new THREE.Vector3(pos.x, pos.y, pos.z);
-  });
-
-  if (positions.length >= 2) {
-    const curve = new THREE.CatmullRomCurve3(positions);
-    const points = curve.getPoints(100);
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
-      color: 0x4f8fd6, // Accent Cyan
-      linewidth: 3,
-      transparent: true,
-      opacity: 0.75
-    });
-    pathLine = new THREE.Line(geometry, material);
-    try {
-      scene.add(pathLine);
-    } catch (e) {
-      console.warn("Could not add path line to scene:", e);
-    }
-  }
-
-  // 2. Add clickable 3D diamond nodes (Octahedrons) at keyframe positions
-  state.keyframes.forEach((frame, index) => {
-    const pos = getCameraPosition(frame);
-    const geometry = new THREE.OctahedronGeometry(0.08, 0); // 0.08m size rotated diamond
-    const isSelected = state.selectedKeyframeIndex === index;
-    const material = new THREE.MeshBasicMaterial({
-      color: isSelected ? 0xd9822b : 0x4f8fd6, // Selected Orange / Active Cyan
-      transparent: true,
-      opacity: 0.9
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(pos.x, pos.y, pos.z);
-    mesh.userData = { keyframeIndex: index };
-    try {
-      scene.add(mesh);
-    } catch (e) {
-      console.warn("Could not add keyframe node to scene:", e);
-    }
-    pathPoints.push(mesh);
-  });
-
-  // Force <model-viewer> to repaint the Three.js scene
+  // Do not inject helper path geometry into the GLB scene. Some exported GLBs
+  // lose or mis-render objects when external helper meshes are added.
   if (modelViewer.requestUpdate) {
     modelViewer.requestUpdate();
   }
@@ -1221,6 +1951,23 @@ function drawCameraPath() {
 
 function interpolateFrame(time) {
   if (!state.keyframes.length) return createCurrentKeyframe(time);
+
+  // Dynamic Camera range check bypass
+  const currentFrameNumber = getCurrentFrame(time);
+  const range = state.cameraRanges ? state.cameraRanges.find(r => currentFrameNumber >= r.startFrame && currentFrameNumber <= r.endFrame) : null;
+  if (range && !range.dynamic) {
+    const lensValue = range.lens || 29;
+    return {
+      time,
+      orbit: { ...range.orbit },
+      target: { ...range.target },
+      fov: lensToFov(lensValue),
+      lens: lensValue,
+      shake: 0,
+      easing: 'linear'
+    };
+  }
+
   if (time <= state.keyframes[0].time) return state.keyframes[0];
   if (time >= state.keyframes.at(-1).time) return state.keyframes.at(-1);
 
@@ -1250,7 +1997,10 @@ function interpolateFrame(time) {
 }
 
 function getTimelineTime() {
-  return (parseNumber(inputs.timeline.value, 0) / 1000) * state.duration;
+  if (state.isPlaying) {
+    return clamp((performance.now() - state.startedAt) / 1000, 0, state.duration);
+  }
+  return state.pausedAt;
 }
 
 function getVisibleTimelineFrame() {
@@ -1345,10 +2095,10 @@ function updateTimelineReadouts(time) {
   const totalFrames = getTotalFrames();
   ensureTimelineView();
 
-  currentFrameReadout.textContent = `Frame ${currentFrame}`;
+  currentFrameReadout.textContent = `Frame ${currentFrame + 1}`;
   totalFrameReadout.textContent = `Total ${totalFrames}`;
-  zoomReadout.textContent = `View ${state.timelineViewStartFrame}-${state.timelineViewEndFrame}`;
-  playheadBubble.textContent = `F${currentFrame}`;
+  zoomReadout.textContent = `View ${state.timelineViewStartFrame + 1}-${state.timelineViewEndFrame + 1}`;
+  playheadBubble.textContent = `F${currentFrame + 1}`;
   const trackWidth = timelineTrackWrap?.clientWidth ?? 0;
   const trackInset = 18;
   const playheadX = trackWidth
@@ -1403,7 +2153,7 @@ function renderTimelineScale() {
     const tick = document.createElement("span");
     tick.className = `timeline-tick ${type}`;
     tick.style.left = `${getFramePercent(frame)}%`;
-    tick.textContent = type === "major" ? String(frame) : "";
+    tick.textContent = type === "major" ? String(frame + 1) : "";
     timelineScale.append(tick);
   });
 }
@@ -1536,6 +2286,7 @@ function updateTimeline(time) {
 
 function seek(time) {
   const clamped = clamp(time, 0, state.duration);
+  state.pausedAt = clamped;
   updateTimeline(clamped);
   if (state.audioDuration && Math.abs(timelineAudio.currentTime - clamped) > 0.08) {
     timelineAudio.currentTime = clamp(clamped, 0, state.audioDuration);
@@ -1547,6 +2298,7 @@ function seek(time) {
   if (state.keyframes.length > 0) {
     applyCamera(interpolateFrame(clamped));
   }
+  updateActiveRangeHighlight();
   updateLabelVisibilities(clamped);
 }
 
@@ -1633,7 +2385,7 @@ function play() {
 function pause() {
   state.isPlaying = false;
   cancelAnimationFrame(state.rafId);
-  state.pausedAt = getTimelineTime();
+  // state.pausedAt is already set precisely by seek() during tick()
   timelineAudio.pause();
   if (state.modelAnimationDuration) modelViewer.pause();
   modelViewer.setAttribute("camera-controls", "");
@@ -1706,7 +2458,7 @@ function renderKeyframes() {
     title.className = "keyframe-title";
     actions.className = "inline-keyframe-actions";
     const frameNumber = Math.round(frame.time * state.fps);
-    title.textContent = `#${index + 1} at Frame ${frameNumber}`;
+    title.textContent = `#${index + 1} at Frame ${frameNumber + 1}`;
     orbit.textContent = `Orbit ${formatOrbit(frame.orbit)}`;
     target.textContent = `Target ${formatTarget(frame.target)}`;
     fov.textContent = `FOV ${frame.fov.toFixed(1)}deg`;
@@ -1762,16 +2514,18 @@ function renderTimelineMarkers() {
     marker.style.left = `${getFramePercent(frameNumber)}%`;
     marker.dataset.index = String(index + 1);
     marker.setAttribute("aria-label", `Keyframe ${index + 1}`);
-    marker.title = `Keyframe ${index + 1} at frame ${frameNumber}, ${frame.time.toFixed(2)}s`;
+    marker.title = `Keyframe ${index + 1} at frame ${frameNumber + 1}, ${frame.time.toFixed(2)}s`;
     marker.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (state.isPlaying) pause();
       const currentIndex = state.keyframes.indexOf(frame);
       seekToKeyframe(currentIndex === -1 ? index : currentIndex);
     });
     marker.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (state.isPlaying) pause();
       state.draggingKeyframeIndex = index;
       state.draggingKeyframeRef = state.keyframes[index];
       marker.setPointerCapture(event.pointerId);
@@ -1808,6 +2562,7 @@ function renderTimelineMarkers() {
 
   updateTimelineReadouts(getTimelineTime());
   updateSelectedKeyframe(getTimelineTime());
+  renderTimelineTracks();
 }
 
 function seekToKeyframe(index) {
@@ -1894,6 +2649,10 @@ function moveKeyframeToFrame(index, frameNumber, options = { render: true }) {
   const safeFrame = clamp(frameNumber, 0, getTotalFrames());
   const time = clamp(safeFrame / state.fps, 0, state.duration);
   const keyframe = state.keyframes[index];
+  const duplicateIndex = state.keyframes.findIndex((frame, frameIndex) => frameIndex !== index && getCurrentFrame(frame.time) === safeFrame);
+  if (duplicateIndex >= 0) {
+    state.keyframes.splice(duplicateIndex, 1);
+  }
   keyframe.time = time;
   if (options.render) {
     state.keyframes.sort((a, b) => a.time - b.time);
@@ -1915,14 +2674,34 @@ function nudgeSelectedKeyframe(direction) {
   moveKeyframeToFrame(state.selectedKeyframeIndex, getCurrentFrame(keyframe.time) + direction);
 }
 
+function upsertKeyframeAtFrame(frameData) {
+  const frameNumber = getCurrentFrame(frameData.time);
+  const normalizedTime = clamp(frameNumber / state.fps, 0, state.duration);
+  const keyframe = {
+    ...frameData,
+    time: normalizedTime,
+  };
+  const existingIndex = state.keyframes.findIndex((frame) => getCurrentFrame(frame.time) === frameNumber);
+  const replaced = existingIndex >= 0;
+
+  if (replaced) {
+    state.keyframes[existingIndex] = keyframe;
+  } else {
+    state.keyframes.push(keyframe);
+  }
+
+  state.keyframes.sort((a, b) => a.time - b.time);
+  state.selectedKeyframeIndex = state.keyframes.indexOf(keyframe);
+  return { frameNumber, replaced };
+}
+
 function addKeyframe() {
-  const frame = createCurrentKeyframe();
-  state.keyframes = [...state.keyframes, frame].sort((a, b) => a.time - b.time);
+  const frame = captureLiveCameraFrame();
+  const { frameNumber, replaced } = upsertKeyframeAtFrame(frame);
   renderKeyframes();
   renderTimelineMarkers();
   drawCameraPath();
-  const frameNumber = Math.round(frame.time * state.fps);
-  setStatus(`Added keyframe at Frame ${frameNumber}.`);
+  setStatus(`${replaced ? "Replaced" : "Added"} keyframe at Frame ${frameNumber}: ${frame.orbit.yaw.toFixed(1)}deg ${frame.orbit.pitch.toFixed(1)}deg, ${frame.orbit.radius.toFixed(2)}m, FOV ${frame.fov.toFixed(1)}deg.`);
 }
 
 function toggleAutoKey() {
@@ -1940,21 +2719,12 @@ function recordAutoKeyframe() {
   
   const currentFrame = getCurrentFrame(getTimelineTime());
   const time = currentFrame / state.fps;
-  
-  const existingIndex = state.keyframes.findIndex(frame => getCurrentFrame(frame.time) === currentFrame);
-  const frameData = createCurrentKeyframe(time);
-  
-  let addedNew = false;
-  if (existingIndex >= 0) {
-    state.keyframes[existingIndex] = frameData;
-  } else {
-    state.keyframes = [...state.keyframes, frameData].sort((a, b) => a.time - b.time);
-    addedNew = true;
-  }
+  const frameData = captureLiveCameraFrame(time);
+  const { replaced } = upsertKeyframeAtFrame(frameData);
   
   if (autoKeyRenderTimeout) clearTimeout(autoKeyRenderTimeout);
   
-  if (addedNew) {
+  if (!replaced) {
     renderKeyframes();
     renderTimelineMarkers();
     drawCameraPath();
@@ -1990,11 +2760,11 @@ function pasteKeyframe() {
     ...cloneKeyframe(state.copiedKeyframe),
     time,
   };
-  state.keyframes = [...state.keyframes, pasted].sort((a, b) => a.time - b.time);
+  const { replaced } = upsertKeyframeAtFrame(pasted);
   renderKeyframes();
   renderTimelineMarkers();
   seek(time);
-  setStatus(`Pasted keyframe at frame ${currentFrame}.`);
+  setStatus(`${replaced ? "Replaced" : "Pasted"} keyframe at frame ${currentFrame}.`);
 }
 
 function deleteKeyframe(index = state.selectedKeyframeIndex) {
@@ -2033,7 +2803,8 @@ function renderPresets() {
 function applyPreset(preset) {
   state.duration = preset.duration;
   inputs.duration.value = preset.duration.toFixed(1);
-  inputs.lens.value = String(preset.lens);
+  inputs.lens.value = String(Number(lensToFov(preset.lens).toFixed(1)));
+  syncFovReadouts(inputs.lens.value);
   setKeyframes(
     preset.frames.map((frame) => ({
       ...frame,
@@ -2044,8 +2815,82 @@ function applyPreset(preset) {
   setStatus(`Applied preset: ${preset.name}`);
 }
 
+function getExportCompensationScale() {
+  return parseNumber(inputs.exportCompensation?.value, 0) / 100;
+}
+
+function getCameraDelta(from, to) {
+  if (!from || !to) return Infinity;
+  return Math.max(
+    Math.abs((from.orbit?.yaw ?? 0) - (to.orbit?.yaw ?? 0)),
+    Math.abs((from.orbit?.pitch ?? 0) - (to.orbit?.pitch ?? 0)),
+    Math.abs((from.orbit?.radius ?? 0) - (to.orbit?.radius ?? 0)),
+    Math.abs((from.target?.x ?? 0) - (to.target?.x ?? 0)),
+    Math.abs((from.target?.y ?? 0) - (to.target?.y ?? 0)),
+    Math.abs((from.target?.z ?? 0) - (to.target?.z ?? 0)),
+    Math.abs((from.fov ?? 0) - (to.fov ?? 0)),
+  );
+}
+
+function getCameraTimelineMotion(frames) {
+  let maxDelta = 0;
+  let totalDelta = 0;
+  for (let index = 1; index < frames.length; index += 1) {
+    const delta = getCameraDelta(frames[index - 1], frames[index]);
+    maxDelta = Math.max(maxDelta, delta);
+    totalDelta += delta;
+  }
+  return { maxDelta, totalDelta };
+}
+
+function getExportHoldWarnings(frames) {
+  const warnings = [];
+  for (let index = 1; index < frames.length; index += 1) {
+    const from = frames[index - 1];
+    const to = frames[index];
+    const fromFrame = getCurrentFrame(from.time);
+    const toFrame = getCurrentFrame(to.time);
+    const gap = toFrame - fromFrame;
+    const delta = getCameraDelta(from, to);
+    if (gap >= state.fps * 2 && delta < 0.05) {
+      warnings.push({
+        fromFrame: fromFrame + 1,
+        toFrame: toFrame + 1,
+        gapFrames: gap,
+        reason: "Camera values are identical or almost identical, so this section will look still."
+      });
+    }
+  }
+  return warnings;
+}
+
+function compensateFrameForExport(frame) {
+  return cloneKeyframe(frame);
+}
+
+function compensateRangeForExport(range) {
+  const fovValue = lensToFov(range.lens || 29);
+  return {
+    ...range,
+    fov: fovValue
+  };
+}
+
 function exportCameraJson() {
-  const currentFrame = createCurrentKeyframe(getTimelineTime());
+  const sortedFrames = [...state.keyframes].sort((a, b) => a.time - b.time);
+  if (!sortedFrames.length) {
+    setStatus("No keyframes to export. Add at least one camera keyframe first.", "warn");
+    return;
+  }
+  const motion = getCameraTimelineMotion(sortedFrames);
+  if (sortedFrames.length > 1 && motion.maxDelta < 0.5) {
+    setStatus(
+      "Export warning: camera keyframes are almost identical, so the other app will look static. Replace the keyframes after moving the camera.",
+      "warn",
+    );
+  }
+  const referenceFrame = sortedFrames[0] ?? createCurrentKeyframe(getTimelineTime());
+  const currentFrame = compensateFrameForExport(referenceFrame);
   
   const currentCameraState = {
     theta: Number(currentFrame.orbit.yaw.toFixed(3)),
@@ -2057,21 +2902,32 @@ function exportCameraJson() {
     fov: Number(currentFrame.fov.toFixed(3))
   };
 
-  const keyframes = state.keyframes.map((frame, index) => {
+  const keyframes = sortedFrames.map((sourceFrame, index) => {
+    const frame = compensateFrameForExport(sourceFrame);
     const frameNumber = Math.round(frame.time * state.fps);
+    const exactTime = frameNumber / state.fps;
+    const yaw = Number(frame.orbit.yaw.toFixed(3));
+    const pitch = Number(frame.orbit.pitch.toFixed(3));
+    const radius = Number(frame.orbit.radius.toFixed(3));
+    const targetX = Number(frame.target.x.toFixed(3));
+    const targetY = Number(frame.target.y.toFixed(3));
+    const targetZ = Number(frame.target.z.toFixed(3));
+    const fovValue = Number.isFinite(parseNumber(frame.fov, NaN))
+      ? frame.fov
+      : lensToFov(frame.lens ?? parseNumber(inputs.lens.value, 29));
+    const fov = Number(fovValue.toFixed(3));
     return {
       frame: frameNumber,
-      time: Number(frame.time.toFixed(6)),
+      time: Number(exactTime.toFixed(6)),
       name: `Keyframe ${index + 1}`,
-      easing: frame.easing ?? 'easeInOut',
       properties: {
-        theta: [Number(frame.orbit.yaw.toFixed(3))],
-        phi: [Number(frame.orbit.pitch.toFixed(3))],
-        radius: [Number(frame.orbit.radius.toFixed(3))],
-        targetX: [Number(frame.target.x.toFixed(3))],
-        targetY: [Number(frame.target.y.toFixed(3))],
-        targetZ: [Number(frame.target.z.toFixed(3))],
-        fov: [Number(frame.fov.toFixed(3))]
+        theta: [yaw],
+        phi: [pitch],
+        radius: [radius],
+        targetX: [targetX],
+        targetY: [targetY],
+        targetZ: [targetZ],
+        fov: [fov]
       }
     };
   });
@@ -2079,6 +2935,18 @@ function exportCameraJson() {
   const data = {
     currentCameraState,
     keyframes,
+    cameraRanges: state.cameraRanges ? state.cameraRanges.map(r => {
+      const compensated = compensateRangeForExport(r);
+      return {
+        startFrame: compensated.startFrame,
+        endFrame: compensated.endFrame,
+        dynamic: compensated.dynamic,
+        orbit: compensated.orbit ? { ...compensated.orbit } : null,
+        target: compensated.target ? { ...compensated.target } : null,
+        lens: compensated.lens,
+        fov: Number(compensated.fov.toFixed(3))
+      };
+    }) : [],
     animationSettings: {
       fps: state.fps,
       duration: state.duration,
@@ -2104,7 +2972,7 @@ function exportCameraJson() {
       version: "1.1",
       creator: "LearningPad 3D Web Camera Controls",
       timestamp: new Date().toISOString(),
-      totalKeyframes: state.keyframes.length
+      totalKeyframes: sortedFrames.length
     }
   };
 
@@ -2117,7 +2985,9 @@ function exportCameraJson() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  setStatus("Exported camera-animation.json");
+  const holdWarnings = getExportHoldWarnings(sortedFrames);
+  const warnings = holdWarnings.length ? ` (${holdWarnings.length} still/hold section${holdWarnings.length === 1 ? "" : "s"} detected)` : "";
+  setStatus(`Exported camera-animation.json${warnings}`);
 }
 
 function downloadJson(data, filename) {
@@ -2161,6 +3031,15 @@ function getWorkingFileData() {
       keyframes: state.keyframes.map(cloneKeyframe),
       selectedKeyframeIndex: state.selectedKeyframeIndex,
       copiedKeyframe: state.copiedKeyframe ? cloneKeyframe(state.copiedKeyframe) : null,
+      cameraRanges: state.cameraRanges ? state.cameraRanges.map(r => ({
+        startFrame: r.startFrame,
+        endFrame: r.endFrame,
+        dynamic: r.dynamic,
+        orbit: r.orbit ? { ...r.orbit } : null,
+        target: r.target ? { ...r.target } : null,
+        lens: r.lens,
+        fov: Number(lensToFov(r.lens || 29).toFixed(3))
+      })) : []
     },
     effects: {
       shakeEnabled: state.shakeEnabled,
@@ -2211,6 +3090,26 @@ async function loadWorkingFile(file) {
   state.selectedKeyframeIndex = clamp(parseNumber(json.camera?.selectedKeyframeIndex, 0), 0, state.keyframes.length - 1);
   state.copiedKeyframe = json.camera?.copiedKeyframe ? normalizeKeyframe(json.camera.copiedKeyframe, 0, 1) : null;
   if (json.camera?.defaultCamera) state.defaultCamera = normalizeKeyframe(json.camera.defaultCamera, 0, 1);
+
+  const importedRanges = (json.camera && Array.isArray(json.camera.cameraRanges))
+    ? json.camera.cameraRanges
+    : (Array.isArray(json.cameraRanges) ? json.cameraRanges : (Array.isArray(json.cameraTracks) ? json.cameraTracks : null));
+
+  if (importedRanges) {
+    state.cameraRanges = importedRanges.map(r => ({
+      startFrame: r.startFrame,
+      endFrame: r.endFrame,
+      dynamic: r.dynamic,
+      orbit: r.orbit ? { ...r.orbit } : { yaw: 0, pitch: 75, radius: 3 },
+      target: r.target ? { ...r.target } : { x: 0, y: 0, z: 0 },
+      lens: r.lens || 29
+    }));
+  } else {
+    state.cameraRanges = [];
+  }
+  sortCameraRanges();
+  renderRangesList();
+  renderTimelineTracks();
 
   state.labels = Array.isArray(json.labels)
     ? json.labels.map((label, index) => normalizeLabel(label, index))
@@ -2568,6 +3467,8 @@ function getLabelText(field) {
 
 function getThreeScene() {
   try {
+    const candidates = getThreeSceneCandidates();
+    if (candidates.length) return candidates[0];
     const symbol = Symbol.for('three3d');
     if (modelViewer && modelViewer[symbol]) {
       const three = modelViewer[symbol];
@@ -2578,6 +3479,56 @@ function getThreeScene() {
     console.warn("Could not get Three.js scene:", e);
   }
   return null;
+}
+
+function isThreeObjectVisible(object) {
+  let current = object;
+  while (current) {
+    if (current.visible === false) return false;
+    if (current.scale) {
+      if (Math.abs(current.scale.x) < 0.0001 || 
+          Math.abs(current.scale.y) < 0.0001 || 
+          Math.abs(current.scale.z) < 0.0001) {
+        return false;
+      }
+    }
+    current = current.parent;
+  }
+  return true;
+}
+
+function updateObjectLabelPositionsAndVisibilities() {
+  if (!state.aiShowObjectNames) return;
+
+  state.aiSceneObjects.forEach((item) => {
+    const hotspot = modelViewer.querySelector(`[slot="hotspot-ai-object-label-${item.id}"]`);
+    if (!hotspot) return;
+
+    // Check visibility
+    const visible = isThreeObjectVisible(item.object);
+    if (!visible) {
+      hotspot.style.display = "none";
+      hotspot.style.opacity = "0";
+      hotspot.style.pointerEvents = "none";
+      return;
+    }
+
+    // Update position dynamically
+    const bounds = getObjectWorldBounds(item.object);
+    if (bounds) {
+      const pos = bounds.center;
+      hotspot.setAttribute("data-position", `${pos.x} ${pos.y} ${pos.z}`);
+      hotspot.style.display = "block";
+      hotspot.style.opacity = "1";
+      hotspot.style.pointerEvents = "auto";
+    } else {
+      const pos = item.target.position;
+      hotspot.setAttribute("data-position", `${pos.x} ${pos.y} ${pos.z}`);
+      hotspot.style.display = "block";
+      hotspot.style.opacity = "1";
+      hotspot.style.pointerEvents = "auto";
+    }
+  });
 }
 
 function updateLabelPositions() {
@@ -2606,6 +3557,8 @@ function updateLabelPositions() {
       }
     }
   });
+
+  updateObjectLabelPositionsAndVisibilities();
 }
 
 function normalizeLabel(raw, index) {
@@ -2680,7 +3633,16 @@ function updateLabelVisibilities(time) {
   state.labels.forEach((label, index) => {
     const hotspot = modelViewer.querySelector(`[slot="hotspot-${index}"]`);
     if (!hotspot) return;
-    const chip = labelList.querySelector(`[data-label-index="${index}"]`);
+    const chip = labelList ? labelList.querySelector(`[data-label-index="${index}"]`) : null;
+
+    if (!state.showLabels) {
+      hotspot.style.display = "none";
+      hotspot.style.opacity = "0";
+      hotspot.style.pointerEvents = "none";
+      hotspot.classList.remove("active");
+      if (chip) chip.classList.remove("active");
+      return;
+    }
 
     if (!label.frames?.length && !label.visibilityRanges?.length && !label.hasTimelineVisibility) {
       hotspot.style.display = "block";
@@ -2710,6 +3672,8 @@ function updateLabelVisibilities(time) {
       }
     }
   });
+
+  updateObjectLabelPositionsAndVisibilities();
 }
 
 function renderLabelsInViewer() {
@@ -2751,53 +3715,57 @@ function renderLabelsInViewer() {
 }
 
 function renderLabels() {
-  labelList.innerHTML = "";
+  if (labelList) {
+    labelList.innerHTML = "";
+  }
 
   if (!state.labels.length) {
-    labelList.textContent = "No labels loaded.";
+    if (labelList) labelList.textContent = "No labels loaded.";
     modelViewer.querySelectorAll(".hotspot").forEach((el) => el.remove());
     return;
   }
 
-  state.labels.forEach((label, index) => {
-    const chip = document.createElement("div");
-    chip.className = "label-chip";
-    chip.setAttribute("data-label-index", String(index));
-    
-    if (label.frames && label.frames.length > 0) {
-      chip.classList.add("clickable");
-      chip.title = `Click to seek to nearest label frame`;
-      chip.addEventListener("click", () => {
-        const targetFrame = getNearestLabelFrame(label);
-        if (targetFrame !== null) {
-          const targetTime = targetFrame / state.fps;
-          state.pausedAt = targetTime;
-          ensureFrameInView(targetFrame);
-          seek(targetTime);
-          setStatus(`Seeked to label frame ${targetFrame}`);
-        }
-      });
-    }
+  if (labelList) {
+    state.labels.forEach((label, index) => {
+      const chip = document.createElement("div");
+      chip.className = "label-chip";
+      chip.setAttribute("data-label-index", String(index));
+      
+      if (label.frames && label.frames.length > 0) {
+        chip.classList.add("clickable");
+        chip.title = `Click to seek to nearest label frame`;
+        chip.addEventListener("click", () => {
+          const targetFrame = getNearestLabelFrame(label);
+          if (targetFrame !== null) {
+            const targetTime = targetFrame / state.fps;
+            state.pausedAt = targetTime;
+            ensureFrameInView(targetFrame);
+            seek(targetTime);
+            setStatus(`Seeked to label frame ${targetFrame}`);
+          }
+        });
+      }
 
-    const title = document.createElement("strong");
-    const detail = document.createElement("span");
-    title.textContent = label.name;
-    
-    if (label.visibilityRanges && label.visibilityRanges.length) {
-      const rangeText = label.visibilityRanges
-        .map((range) => (range.start === range.end ? `${range.start}` : `${range.start}-${range.end}`))
-        .join(", ");
-      title.textContent += ` (Visible: ${rangeText})`;
-    } else if (label.frames && label.frames.length === 1) {
-      title.textContent += ` (Frame ${label.frames[0]})`;
-    } else if (label.frames && label.frames.length > 1) {
-      title.textContent += ` (Frames: ${label.frames.join(", ")})`;
-    }
-    
-    detail.textContent = formatTarget(label.position);
-    chip.append(title, detail);
-    labelList.append(chip);
-  });
+      const title = document.createElement("strong");
+      const detail = document.createElement("span");
+      title.textContent = label.name;
+      
+      if (label.visibilityRanges && label.visibilityRanges.length) {
+        const rangeText = label.visibilityRanges
+          .map((range) => (range.start === range.end ? `${range.start}` : `${range.start}-${range.end}`))
+          .join(", ");
+        title.textContent += ` (Visible: ${rangeText})`;
+      } else if (label.frames && label.frames.length === 1) {
+        title.textContent += ` (Frame ${label.frames[0]})`;
+      } else if (label.frames && label.frames.length > 1) {
+        title.textContent += ` (Frames: ${label.frames.join(", ")})`;
+      }
+      
+      detail.textContent = formatTarget(label.position);
+      chip.append(title, detail);
+      labelList.append(chip);
+    });
+  }
 
   renderLabelsInViewer();
 }
@@ -3254,6 +4222,46 @@ async function handleFile(file) {
           if (shakeSpeedReadout) shakeSpeedReadout.textContent = `${state.shakeSpeed.toFixed(1)}Hz`;
         }
         setKeyframes(cameraFrames, json.duration ?? json.totalFrames ?? json.frameCount ?? json.endFrame);
+        
+        // Parse and load Camera Ranges from standard camera JSON
+        const importedRanges = (json.camera && Array.isArray(json.camera.cameraRanges))
+          ? json.camera.cameraRanges
+          : (Array.isArray(json.cameraRanges) ? json.cameraRanges : (Array.isArray(json.cameraTracks) ? json.cameraTracks : null));
+
+        if (importedRanges) {
+          state.cameraRanges = importedRanges.map(r => {
+            // Support multiple representations of dynamic camera on/off
+            let dynamic = true;
+            if (r.dynamic !== undefined) {
+              if (typeof r.dynamic === 'string') {
+                dynamic = (r.dynamic.toLowerCase() === 'true' || r.dynamic.toLowerCase() === 'on');
+              } else {
+                dynamic = !!r.dynamic;
+              }
+            } else if (r.cameraState !== undefined) {
+              dynamic = (r.cameraState.toLowerCase() === 'on' || r.cameraState.toLowerCase() === 'true');
+            } else if (r.camera !== undefined) {
+              dynamic = (r.camera.toLowerCase() === 'on' || r.camera.toLowerCase() === 'true');
+            } else if (r.cam !== undefined) {
+              dynamic = (r.cam.toLowerCase() === 'on' || r.cam.toLowerCase() === 'true');
+            }
+
+            return {
+              startFrame: parseNumber(r.startFrame, 0),
+              endFrame: parseNumber(r.endFrame, 100),
+              dynamic: dynamic,
+              orbit: r.orbit ? { ...r.orbit } : { yaw: 0, pitch: 75, radius: 3 },
+              target: r.target ? { ...r.target } : { x: 0, y: 0, z: 0 },
+              lens: r.lens || 29
+            };
+          });
+        } else {
+          state.cameraRanges = [];
+        }
+        sortCameraRanges();
+        renderRangesList();
+        renderTimelineTracks();
+
         setStatus(describeCameraTimeline());
       } else {
         const rawLabels = extractRawLabelsFromJson(json);
@@ -3307,7 +4315,7 @@ function fitModel(attempt = 0) {
         return;
       }
 
-      const fov = 28;
+      const fov = 45;
       const target = size.center;
       const width = size.hasSize ? size.width : 1;
       const height = size.hasSize ? size.height : 1;
@@ -3347,16 +4355,11 @@ function fitModel(attempt = 0) {
         state.defaultCamera.target = { x: liveTarget.x, y: liveTarget.y, z: liveTarget.z };
       }
 
-      const liveFov = modelViewer.getFieldOfView();
-      if (liveFov) {
-        const lens = fovToLens(liveFov);
-        inputs.lens.value = Math.round(lens);
-        if (lensReadout) lensReadout.textContent = `${Math.round(lens)}mm`;
-        if (fovReadout) fovReadout.textContent = `${liveFov.toFixed(1)}deg FOV`;
-        
-        state.defaultCamera.fov = liveFov;
-        state.defaultCamera.lens = lens;
-      }
+      inputs.lens.value = Number(clamp(fov, 1, 120).toFixed(1));
+      syncFovReadouts(fov);
+      
+      state.defaultCamera.fov = fov;
+      state.defaultCamera.lens = fovToLens(fov);
     } catch (e) {
       console.warn("Failed to read camera values on fitModel:", e);
     }
@@ -3450,10 +4453,12 @@ inputs.animation.addEventListener("change", () => {
   requestAnimationFrame(check);
 });
 inputs.timeline.addEventListener("input", () => {
+  if (state.isPlaying) pause();
   state.pausedAt = getTimeFromTimelineValue(inputs.timeline.value);
   seek(state.pausedAt);
 });
 inputs.bottomTimeline.addEventListener("input", () => {
+  if (state.isPlaying) pause();
   const frame = parseNumber(inputs.bottomTimeline.value, 0);
   const snappedFrame = snapFrame(frame);
   state.pausedAt = snappedFrame / state.fps;
@@ -3492,16 +4497,12 @@ for (const input of [inputs.yaw, inputs.pitch, inputs.radius, inputs.targetX, in
 }
 
 inputs.lens.addEventListener("input", () => {
-  applyCamera(createCurrentKeyframe(getTimelineTime()));
-  if (state.autoKeyframe) {
-    recordAutoKeyframe();
-  }
+  setFovControl(inputs.lens.value);
 });
 
-document.querySelectorAll("[data-lens]").forEach((button) => {
+document.querySelectorAll("[data-fov]").forEach((button) => {
   button.addEventListener("click", () => {
-    inputs.lens.value = button.dataset.lens;
-    applyCamera(createCurrentKeyframe(getTimelineTime()));
+    setFovControl(button.dataset.fov);
   });
 });
 
@@ -3555,6 +4556,18 @@ buttons.loopToggle.addEventListener("click", () => {
   setStatus(state.loopPlayback ? "Timeline loop enabled." : "Timeline loop disabled.");
 });
 
+if (buttons.rangesToggle) {
+  buttons.rangesToggle.addEventListener("click", () => {
+    const lanes = document.querySelector(".timeline-tracks-lanes");
+    if (lanes) {
+      const isShow = lanes.classList.toggle("show");
+      buttons.rangesToggle.classList.toggle("active", isShow);
+      buttons.rangesToggle.setAttribute("aria-pressed", String(isShow));
+      setStatus(isShow ? "Camera Ranges tracks visible." : "Camera Ranges tracks hidden.");
+    }
+  });
+}
+
 inputs.shakeEnabled.addEventListener("change", () => {
   state.shakeEnabled = inputs.shakeEnabled.checked;
   inputs.shakeIntensity.disabled = !state.shakeEnabled;
@@ -3583,6 +4596,13 @@ inputs.shakeIntensity.addEventListener("input", () => {
   seek(getTimelineTime());
 });
 
+const exportCompensationReadout = document.querySelector("#exportCompensationReadout");
+if (inputs.exportCompensation && exportCompensationReadout) {
+  inputs.exportCompensation.addEventListener("input", () => {
+    exportCompensationReadout.textContent = `${parseNumber(inputs.exportCompensation.value, 0).toFixed(0)}%`;
+  });
+}
+
 const shakeSpeedReadout = document.querySelector("#shakeSpeedReadout");
 inputs.shakeSpeed.addEventListener("input", () => {
   state.shakeSpeed = parseNumber(inputs.shakeSpeed.value, 2.0);
@@ -3601,10 +4621,8 @@ buttons.addShakeKeyframe.addEventListener("click", () => {
     state.keyframes[existingIndex].shake = parseNumber(inputs.shakeIntensity.value, 0.3);
     setStatus(`Updated shake intensity at Frame ${currentFrame}.`);
   } else {
-    const frame = createCurrentKeyframe(time);
-    state.keyframes = [...state.keyframes, frame].sort((a, b) => a.time - b.time);
-    const newIndex = state.keyframes.indexOf(frame);
-    state.selectedKeyframeIndex = newIndex;
+    const frame = captureLiveCameraFrame(time);
+    upsertKeyframeAtFrame(frame);
     setStatus(`Added keyframe with shake at Frame ${currentFrame}.`);
   }
 
@@ -3629,7 +4647,7 @@ buttons.savePreset.addEventListener("click", () => {
 
   const preset = state.presets[state.selectedPresetIndex];
   preset.duration = state.duration;
-  preset.lens = parseNumber(inputs.lens.value, 35);
+  preset.lens = parseNumber(inputs.lens.value, 29);
   preset.frames = state.keyframes.map(frame => ({
     time: frame.time,
     orbit: { ...frame.orbit },
@@ -3650,7 +4668,7 @@ buttons.createPreset.addEventListener("click", () => {
     name,
     description: "User defined camera movement.",
     duration: state.duration,
-    lens: parseNumber(inputs.lens.value, 35),
+    lens: parseNumber(inputs.lens.value, 29),
     frames: state.keyframes.map(frame => ({
       time: frame.time,
       orbit: { ...frame.orbit },
@@ -3844,6 +4862,7 @@ modelViewer.addEventListener("load", () => {
   refreshModelAnimations();
   fitModel();
   updateLabelPositions();
+  refreshAiObjectList();
   drawCameraPath();
   setStatus("Model ready. Checking GLB animations...");
 });
@@ -3860,6 +4879,83 @@ resetCamera();
 renderPresets();
 updatePlaybackButtons();
 updateDetailsMenuLabel();
+
+// Default camera ranges setup
+if (!state.cameraRanges) {
+  state.cameraRanges = [];
+}
+sortCameraRanges();
+renderRangesList();
+renderTimelineTracks();
+
+// Bind Camera Ranges UI events
+const addRangeBtn = document.getElementById("addRangeBtn");
+const cancelRangeBtn = document.getElementById("cancelRangeBtn");
+const saveRangeBtn = document.getElementById("saveRangeBtn");
+const presetDefaultBtn = document.getElementById("presetDefaultBtn");
+const clearRangesBtn = document.getElementById("clearRangesBtn");
+
+if (addRangeBtn) addRangeBtn.addEventListener("click", () => showRangeEditForm());
+if (cancelRangeBtn) cancelRangeBtn.addEventListener("click", hideRangeForm);
+if (saveRangeBtn) saveRangeBtn.addEventListener("click", saveRangeData);
+
+// Time vs Frame manual synchronization and Dynamic checkbox event listener
+const rangeStart = document.getElementById("rangeStart");
+const rangeEnd = document.getElementById("rangeEnd");
+const rangeStartTime = document.getElementById("rangeStartTime");
+const rangeEndTime = document.getElementById("rangeEndTime");
+const rangeDynamic = document.getElementById("rangeDynamic");
+const rangeStaticSettings = document.getElementById("rangeStaticSettings");
+
+if (rangeStart && rangeStartTime) {
+  rangeStart.addEventListener("input", () => {
+    rangeStartTime.value = ((parseInt(rangeStart.value || 1, 10) - 1) / state.fps).toFixed(3);
+  });
+  rangeStartTime.addEventListener("input", () => {
+    rangeStart.value = Math.round(parseFloat(rangeStartTime.value || 0) * state.fps) + 1;
+  });
+}
+if (rangeEnd && rangeEndTime) {
+  rangeEnd.addEventListener("input", () => {
+    rangeEndTime.value = ((parseInt(rangeEnd.value || 1, 10) - 1) / state.fps).toFixed(3);
+  });
+  rangeEndTime.addEventListener("input", () => {
+    rangeEnd.value = Math.round(parseFloat(rangeEndTime.value || 0) * state.fps) + 1;
+  });
+}
+if (rangeDynamic && rangeStaticSettings) {
+  rangeDynamic.addEventListener("change", () => {
+    rangeStaticSettings.classList.toggle("hidden", rangeDynamic.checked);
+  });
+}
+if (presetDefaultBtn) {
+  presetDefaultBtn.addEventListener("click", () => {
+    const total = getTotalFrames();
+    state.cameraRanges = [
+      { startFrame: 0, endFrame: Math.round(total / 3), dynamic: true },
+      { startFrame: Math.round(total / 3) + 1, endFrame: Math.round(total * 2 / 3), dynamic: false, orbit: { yaw: 0, pitch: 75, radius: 3 }, target: { x: 0, y: 0, z: 0 }, lens: 29 },
+      { startFrame: Math.round(total * 2 / 3) + 1, endFrame: total, dynamic: true }
+    ];
+    sortCameraRanges();
+    renderRangesList();
+    renderTimelineTracks();
+    seek(getTimelineTime());
+  });
+}
+if (clearRangesBtn) {
+  clearRangesBtn.addEventListener("click", () => {
+    state.cameraRanges = [];
+    renderRangesList();
+    renderTimelineTracks();
+    seek(getTimelineTime());
+  });
+}
+
+// Timeline lanes clicks
+const trackDynamic = document.getElementById("timeline-track-dynamic");
+const trackStatic = document.getElementById("timeline-track-static");
+if (trackDynamic) trackDynamic.addEventListener("click", (e) => handleTimelineLaneClick(e, true));
+if (trackStatic) trackStatic.addEventListener("click", (e) => handleTimelineLaneClick(e, false));
 
 if (inputs.easingSelect) {
   inputs.easingSelect.addEventListener("change", () => {
@@ -3910,6 +5006,75 @@ document.querySelectorAll(".ai-chip").forEach((chip) => {
   });
 });
 
+if (buttons.aiPickTarget) {
+  buttons.aiPickTarget.addEventListener("click", toggleAiPickTargetMode);
+}
+if (buttons.aiClearTarget) {
+  buttons.aiClearTarget.addEventListener("click", clearAiPickedTarget);
+}
+if (buttons.aiRefreshObjects) {
+  buttons.aiRefreshObjects.addEventListener("click", refreshAiObjectList);
+}
+if (buttons.aiToggleObjectNames) {
+  buttons.aiToggleObjectNames.addEventListener("click", () => {
+    state.aiShowObjectNames = !state.aiShowObjectNames;
+    buttons.aiToggleObjectNames.classList.toggle("active", state.aiShowObjectNames);
+    buttons.aiToggleObjectNames.setAttribute("aria-pressed", String(state.aiShowObjectNames));
+    renderObjectNamesInViewer();
+    setStatus(state.aiShowObjectNames ? "Showing object names in viewer." : "Hidden object names in viewer.");
+  });
+}
+if (buttons.toggleLabels) {
+  buttons.toggleLabels.addEventListener("click", () => {
+    state.showLabels = !state.showLabels;
+    buttons.toggleLabels.classList.toggle("active", state.showLabels);
+    buttons.toggleLabels.setAttribute("aria-pressed", String(state.showLabels));
+    updateLabelVisibilities(getTimelineTime());
+    setStatus(state.showLabels ? "Labels visible." : "Labels hidden.");
+  });
+}
+if (inputs.aiObjectSelect) {
+  inputs.aiObjectSelect.addEventListener("change", () => selectAiObjectByIndex(inputs.aiObjectSelect.value));
+}
+
+let aiPickStartPointer = null;
+
+modelViewer.addEventListener("pointerdown", (event) => {
+  if (!state.aiPickTargetMode) return;
+  if (event.button !== undefined && event.button !== 0) return;
+  aiPickStartPointer = {
+    x: event.clientX,
+    y: event.clientY,
+    time: performance.now()
+  };
+}, true);
+
+modelViewer.addEventListener("pointerup", (event) => {
+  if (!state.aiPickTargetMode) return;
+  if (!aiPickStartPointer) return;
+  if (event.button !== undefined && event.button !== 0) return;
+
+  const dx = event.clientX - aiPickStartPointer.x;
+  const dy = event.clientY - aiPickStartPointer.y;
+  const dist = Math.hypot(dx, dy);
+  const duration = performance.now() - aiPickStartPointer.time;
+
+  aiPickStartPointer = null;
+
+  // If the user dragged to rotate the camera, ignore the pick click
+  if (dist > 6 || duration > 350) return;
+
+  pickAiTargetFromPointer(event);
+}, true);
+
+modelViewer.addEventListener("pointermove", (event) => {
+  updateAiObjectHover(event);
+}, true);
+
+modelViewer.addEventListener("pointerleave", () => {
+  if (state.aiPickTargetMode) clearAiHoverObject();
+}, true);
+
 
 
 if (timelinePanel) {
@@ -3925,6 +5090,57 @@ if (timelinePanel) {
 let isCtrlRightClickDragging = false;
 let ctrlRightClickDragStart = { x: 0, y: 0 };
 let ctrlRightClickStartRadius = 3.0;
+let ctrlRightClickStartFov = 45;
+
+function isCtrlRightButtonDrag(event) {
+  return event.ctrlKey && (event.button === 2 || (event.buttons & 2) === 2);
+}
+
+function beginCtrlRightFovDrag(event) {
+  event.stopImmediatePropagation();
+  event.preventDefault();
+
+  isCtrlRightClickDragging = true;
+  ctrlRightClickDragStart = { x: event.clientX, y: event.clientY };
+  ctrlRightClickStartFov = parseNumber(inputs.lens.value, state.defaultCamera.fov);
+
+  try {
+    const orbit = modelViewer.getCameraOrbit();
+    ctrlRightClickStartRadius = orbit ? orbit.radius : 3.0;
+  } catch {
+    ctrlRightClickStartRadius = 3.0;
+  }
+
+  try {
+    modelViewer.setPointerCapture(event.pointerId);
+  } catch {
+    // Mouse events do not expose pointer capture. The drag still works.
+  }
+}
+
+function updateCtrlRightFovDrag(event) {
+  event.stopImmediatePropagation();
+  event.preventDefault();
+
+  const deltaY = event.clientY - ctrlRightClickDragStart.y;
+  const nextFov = ctrlRightClickStartFov + (deltaY * 0.12);
+  const fov = setFovControl(nextFov, { instant: true, autoKey: false });
+  const frame = createCurrentKeyframe(getTimelineTime());
+  updateCurrentValuesDisplay(frame);
+  setStatus(`FOV zoom: ${fov.toFixed(1)}deg`);
+}
+
+function endCtrlRightFovDrag(event) {
+  if (!isCtrlRightClickDragging) return;
+  event.stopImmediatePropagation();
+  event.preventDefault();
+  try {
+    modelViewer.releasePointerCapture(event.pointerId);
+  } catch {
+    // Mouse events do not expose pointer capture.
+  }
+  isCtrlRightClickDragging = false;
+}
 
 modelViewer.addEventListener("contextmenu", (event) => {
   if (event.ctrlKey) {
@@ -3944,68 +5160,37 @@ modelViewer.addEventListener("dblclick", (event) => {
 }, true);
 
 modelViewer.addEventListener("pointerdown", (event) => {
-  if (event.ctrlKey && event.button === 2) {
-    event.stopImmediatePropagation();
-    event.preventDefault();
-    
-    isCtrlRightClickDragging = true;
-    ctrlRightClickDragStart = { x: event.clientX, y: event.clientY };
-    
-    try {
-      const orbit = modelViewer.getCameraOrbit();
-      ctrlRightClickStartRadius = orbit ? orbit.radius : 3.0;
-    } catch {
-      ctrlRightClickStartRadius = 3.0;
-    }
-    
-    modelViewer.setPointerCapture(event.pointerId);
+  if (isCtrlRightButtonDrag(event)) {
+    beginCtrlRightFovDrag(event);
   }
 }, true);
 
 modelViewer.addEventListener("pointermove", (event) => {
+  if (!isCtrlRightClickDragging && isCtrlRightButtonDrag(event)) {
+    beginCtrlRightFovDrag(event);
+  }
   if (isCtrlRightClickDragging) {
-    event.stopImmediatePropagation();
-    event.preventDefault();
-    
-    const deltaY = event.clientY - ctrlRightClickDragStart.y;
-    const sensitivity = 0.005;
-    const radiusOffset = deltaY * ctrlRightClickStartRadius * sensitivity;
-    const nextRadius = Math.max(ctrlRightClickStartRadius + radiusOffset, 0.001);
-    
-    try {
-      const orbit = modelViewer.getCameraOrbit();
-      if (orbit) {
-        const yawDeg = (orbit.theta * 180) / Math.PI;
-        const pitchDeg = (orbit.phi * 180) / Math.PI;
-        modelViewer.cameraOrbit = `${yawDeg.toFixed(2)}deg ${pitchDeg.toFixed(2)}deg ${nextRadius.toFixed(3)}m`;
-        
-        inputs.radius.value = nextRadius.toFixed(2);
-        
-        const frame = createCurrentKeyframe(getTimelineTime());
-        updateCurrentValuesDisplay(frame);
-      }
-    } catch (e) {
-      console.error("Zoom handler failed:", e);
-    }
+    updateCtrlRightFovDrag(event);
   }
 }, true);
 
-modelViewer.addEventListener("pointerup", (event) => {
-  if (isCtrlRightClickDragging) {
+modelViewer.addEventListener("wheel", (event) => {
+  if (state.isMouseOverTimeline || state.aiPickTargetMode) return;
+  if (event.ctrlKey) {
     event.stopImmediatePropagation();
     event.preventDefault();
-    modelViewer.releasePointerCapture(event.pointerId);
-    isCtrlRightClickDragging = false;
+    const fov = zoomFovFromWheel(event.deltaY);
+    setStatus(`FOV zoom: ${fov.toFixed(1)}deg`);
   }
+}, { passive: false, capture: true });
+
+
+modelViewer.addEventListener("pointerup", (event) => {
+  endCtrlRightFovDrag(event);
 }, true);
 
 modelViewer.addEventListener("pointercancel", (event) => {
-  if (isCtrlRightClickDragging) {
-    event.stopImmediatePropagation();
-    event.preventDefault();
-    modelViewer.releasePointerCapture(event.pointerId);
-    isCtrlRightClickDragging = false;
-  }
+  endCtrlRightFovDrag(event);
 }, true);
 
 window.addEventListener("resize", () => {
@@ -4013,3 +5198,376 @@ window.addEventListener("resize", () => {
     renderAudioTrack();
   }
 });
+
+// ==========================================
+// CAMERA RANGE TRACK HELPER FUNCTIONS
+// ==========================================
+
+function renderTimelineTracks() {
+  const laneDynamic = document.getElementById('lane-ranges-dynamic');
+  const laneStatic = document.getElementById('lane-ranges-static');
+  if (laneDynamic) laneDynamic.innerHTML = '';
+  if (laneStatic) laneStatic.innerHTML = '';
+
+  if (!state.cameraRanges || state.cameraRanges.length === 0) {
+    // If no range is defined, the dynamic cam is active for all keyframes in the GLB.
+    // Render a single green band spanning the entire visible timeline view.
+    const start = state.timelineViewStartFrame;
+    const end = state.timelineViewEndFrame;
+    const left = getFramePercent(start);
+    const width = getFramePercent(end) - left;
+
+    const band = document.createElement('div');
+    band.className = 'timeline-range-band dynamic';
+    band.style.left = `${left}%`;
+    band.style.width = `${width}%`;
+    band.title = 'Dynamic Mode (All Frames)';
+
+    if (laneDynamic) {
+      laneDynamic.appendChild(band);
+    }
+    return;
+  }
+
+  state.cameraRanges.forEach(range => {
+    // Clamped values to visible screen bounds
+    const start = Math.max(range.startFrame, state.timelineViewStartFrame);
+    const end = Math.min(range.endFrame, state.timelineViewEndFrame);
+    if (start > end) return; // Out of view
+
+    const left = getFramePercent(start);
+    const width = getFramePercent(end) - left;
+
+    const band = document.createElement('div');
+    band.className = `timeline-range-band ${range.dynamic ? 'dynamic' : 'static'}`;
+    band.style.left = `${left}%`;
+    band.style.width = `${width}%`;
+    band.title = `${range.dynamic ? 'Dynamic' : 'Static'} (Frames ${range.startFrame} - ${range.endFrame})`;
+
+    if (range.dynamic && laneDynamic) {
+      laneDynamic.appendChild(band);
+    } else if (!range.dynamic && laneStatic) {
+      laneStatic.appendChild(band);
+    }
+  });
+}
+
+function renderRangesList() {
+  const list = document.getElementById('rangesList');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (!state.cameraRanges || state.cameraRanges.length === 0) {
+    list.innerHTML = '<li style="color: var(--muted); text-align: center; font-size: 11px; padding: 10px;">No ranges defined. Click "+ Add" to create one.</li>';
+    return;
+  }
+
+  const currentFrameNumber = getCurrentFrame(getTimelineTime());
+
+  state.cameraRanges.forEach((range, idx) => {
+    const li = document.createElement('li');
+    li.className = 'range-item';
+    if (currentFrameNumber >= range.startFrame && currentFrameNumber <= range.endFrame) {
+      li.classList.add('active-playing');
+    }
+
+    const info = document.createElement('div');
+    info.className = 'range-info';
+
+    const title = document.createElement('span');
+    title.className = 'range-frames';
+    title.textContent = `Frames ${range.startFrame + 1} - ${range.endFrame + 1}`;
+
+    const badge = document.createElement('span');
+    badge.className = `range-badge ${range.dynamic ? 'dynamic' : 'static'}`;
+    if (range.dynamic) {
+      badge.textContent = 'Dynamic';
+    } else {
+      badge.textContent = `Static (${Math.round(range.orbit.yaw)}°, ${Math.round(range.orbit.pitch)}°, ${range.orbit.radius.toFixed(1)}m)`;
+    }
+
+    info.appendChild(title);
+    info.appendChild(badge);
+
+    const actions = document.createElement('div');
+    actions.className = 'range-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'action-btn';
+    editBtn.type = 'button';
+    editBtn.title = 'Edit Range';
+    editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>`;
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showRangeEditForm(idx);
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'action-btn delete';
+    deleteBtn.type = 'button';
+    deleteBtn.title = 'Delete Range';
+    deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteRange(idx);
+    });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+
+    li.appendChild(info);
+    li.appendChild(actions);
+
+    // Click item to jump to start frame
+    li.addEventListener('click', () => {
+      goToFrame(range.startFrame);
+    });
+
+    list.appendChild(li);
+  });
+}
+
+function deleteRange(index) {
+  state.cameraRanges.splice(index, 1);
+  sortCameraRanges();
+  renderRangesList();
+  renderTimelineTracks();
+  seek(getTimelineTime());
+}
+
+function sortCameraRanges() {
+  state.cameraRanges.sort((a, b) => a.startFrame - b.startFrame);
+}
+
+function showRangeEditForm(idx = null) {
+  const form = document.getElementById('rangeEditorForm');
+  const addBtn = document.getElementById('addRangeBtn');
+  if (!form) return;
+  form.classList.remove('hidden');
+  if (addBtn) addBtn.style.display = 'none';
+
+  const title = document.getElementById('rangeFormTitle');
+  const editIdx = document.getElementById('editRangeIndex');
+  const startInput = document.getElementById('rangeStart');
+  const endInput = document.getElementById('rangeEnd');
+  const startTimeInput = document.getElementById('rangeStartTime');
+  const endTimeInput = document.getElementById('rangeEndTime');
+  const dynamicInput = document.getElementById('rangeDynamic');
+  const staticSettings = document.getElementById('rangeStaticSettings');
+
+  const yawInput = document.getElementById('rangeYaw');
+  const pitchInput = document.getElementById('rangePitch');
+  const radiusInput = document.getElementById('rangeRadius');
+  const targetXInput = document.getElementById('rangeTargetX');
+  const targetYInput = document.getElementById('rangeTargetY');
+  const targetZInput = document.getElementById('rangeTargetZ');
+  const lensInput = document.getElementById('rangeLens');
+
+  const currentKf = captureLiveCameraFrame(getTimelineTime());
+
+  let start = 0;
+  let end = 60;
+  let dynamic = true;
+
+  if (idx !== null) {
+    title.textContent = 'Edit Range';
+    editIdx.value = idx;
+    const r = state.cameraRanges[idx];
+    start = r.startFrame;
+    end = r.endFrame;
+    dynamic = r.dynamic;
+
+    yawInput.value = Math.round(r.orbit?.yaw ?? currentKf.orbit.yaw);
+    pitchInput.value = Math.round(r.orbit?.pitch ?? currentKf.orbit.pitch);
+    radiusInput.value = (r.orbit?.radius ?? currentKf.orbit.radius).toFixed(2);
+    targetXInput.value = (r.target?.x ?? currentKf.target.x).toFixed(2);
+    targetYInput.value = (r.target?.y ?? currentKf.target.y).toFixed(2);
+    targetZInput.value = (r.target?.z ?? currentKf.target.z).toFixed(2);
+    lensInput.value = r.lens || 29;
+  } else {
+    title.textContent = 'Add Range';
+    editIdx.value = '';
+    let proposedStart = 0;
+    if (state.cameraRanges.length > 0) {
+      proposedStart = Math.min(getTotalFrames(), state.cameraRanges[state.cameraRanges.length - 1].endFrame + 1);
+    }
+    start = proposedStart;
+    end = Math.min(getTotalFrames(), proposedStart + 60);
+    dynamic = true;
+
+    yawInput.value = Math.round(currentKf.orbit.yaw);
+    pitchInput.value = Math.round(currentKf.orbit.pitch);
+    radiusInput.value = currentKf.orbit.radius.toFixed(2);
+    targetXInput.value = currentKf.target.x.toFixed(2);
+    targetYInput.value = currentKf.target.y.toFixed(2);
+    targetZInput.value = currentKf.target.z.toFixed(2);
+    lensInput.value = currentKf.lens || 29;
+  }
+
+  startInput.value = start + 1;
+  endInput.value = end + 1;
+  if (startTimeInput) startTimeInput.value = (start / state.fps).toFixed(3);
+  if (endTimeInput) endTimeInput.value = (end / state.fps).toFixed(3);
+  dynamicInput.checked = dynamic;
+
+  if (staticSettings) {
+    staticSettings.classList.toggle('hidden', dynamic);
+  }
+}
+
+function hideRangeForm() {
+  const form = document.getElementById('rangeEditorForm');
+  const addBtn = document.getElementById('addRangeBtn');
+  if (form) form.classList.add('hidden');
+  if (addBtn) addBtn.style.display = 'inline-flex';
+}
+
+function saveRangeData() {
+  const idxVal = document.getElementById('editRangeIndex').value;
+  const start = parseInt(document.getElementById('rangeStart').value, 10) - 1;
+  const end = parseInt(document.getElementById('rangeEnd').value, 10) - 1;
+  const dynamic = document.getElementById('rangeDynamic').checked;
+
+  if (isNaN(start) || isNaN(end) || start < 0 || end > getTotalFrames() || start > end) {
+    alert("Invalid frame range!");
+    return;
+  }
+
+  const isEdit = idxVal !== '';
+  const editIndex = isEdit ? parseInt(idxVal, 10) : -1;
+
+  // Overlap check
+  let overlap = false;
+  for (let i = 0; i < state.cameraRanges.length; i++) {
+    if (i === editIndex) continue;
+    const r = state.cameraRanges[i];
+    if (start <= r.endFrame && end >= r.startFrame) {
+      overlap = true;
+      break;
+    }
+  }
+
+  if (overlap) {
+    alert("Timeline conflict: Range overlaps with an existing segment!");
+    return;
+  }
+
+  let orbit = null;
+  let target = null;
+  let lens = 29;
+
+  if (!dynamic) {
+    const yaw = parseFloat(document.getElementById('rangeYaw').value) || 0;
+    const pitch = parseFloat(document.getElementById('rangePitch').value) || 75;
+    const radius = parseFloat(document.getElementById('rangeRadius').value) || 3;
+    const targetX = parseFloat(document.getElementById('rangeTargetX').value) || 0;
+    const targetY = parseFloat(document.getElementById('rangeTargetY').value) || 0;
+    const targetZ = parseFloat(document.getElementById('rangeTargetZ').value) || 0;
+    lens = parseInt(document.getElementById('rangeLens').value, 10) || 29;
+
+    orbit = { yaw, pitch, radius };
+    target = { x: targetX, y: targetY, z: targetZ };
+  } else {
+    const currentKf = captureLiveCameraFrame(getTimelineTime());
+    orbit = { ...currentKf.orbit };
+    target = { ...currentKf.target };
+    lens = currentKf.lens;
+  }
+
+  const rangeData = {
+    startFrame: start,
+    endFrame: end,
+    dynamic,
+    orbit,
+    target,
+    lens
+  };
+
+  if (isEdit) {
+    state.cameraRanges[editIndex] = rangeData;
+  } else {
+    state.cameraRanges.push(rangeData);
+  }
+
+  sortCameraRanges();
+  hideRangeForm();
+  renderRangesList();
+  renderTimelineTracks();
+  seek(getTimelineTime());
+}
+
+function handleTimelineLaneClick(e, isDynamicTarget) {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const percent = clickX / rect.width;
+
+  ensureTimelineView();
+  const span = getVisibleFrameSpan();
+  const clickedFrame = Math.max(0, Math.min(getTotalFrames(), Math.round(state.timelineViewStartFrame + percent * span)));
+
+  const existingIndex = state.cameraRanges.findIndex(r => clickedFrame >= r.startFrame && clickedFrame <= r.endFrame);
+
+  if (existingIndex !== -1) {
+    const range = state.cameraRanges[existingIndex];
+    if (range.dynamic !== isDynamicTarget) {
+      range.dynamic = isDynamicTarget;
+      if (!isDynamicTarget) {
+        const currentKf = captureLiveCameraFrame(clickedFrame / state.fps);
+        range.orbit = { ...currentKf.orbit };
+        range.target = { ...currentKf.target };
+        range.lens = currentKf.lens;
+      }
+    }
+  } else {
+    // Create new 30-frame range centered on click
+    let start = Math.max(0, clickedFrame - 15);
+    let end = Math.min(getTotalFrames(), clickedFrame + 14);
+
+    const nextRange = state.cameraRanges.find(r => r.startFrame > clickedFrame);
+    if (nextRange) {
+      end = Math.min(end, nextRange.startFrame - 1);
+    }
+
+    const prevRange = [...state.cameraRanges].reverse().find(r => r.endFrame < clickedFrame);
+    if (prevRange) {
+      start = Math.max(start, prevRange.endFrame + 1);
+    }
+
+    if (start <= end) {
+      const currentKf = captureLiveCameraFrame(clickedFrame / state.fps);
+      state.cameraRanges.push({
+        startFrame: start,
+        endFrame: end,
+        dynamic: isDynamicTarget,
+        orbit: { ...currentKf.orbit },
+        target: { ...currentKf.target },
+        lens: currentKf.lens
+      });
+      sortCameraRanges();
+    }
+  }
+
+  renderRangesList();
+  renderTimelineTracks();
+  goToFrame(clickedFrame);
+}
+
+function updateActiveRangeHighlight() {
+  const list = document.getElementById('rangesList');
+  if (!list) return;
+  const items = list.querySelectorAll('.range-item');
+  if (items.length !== state.cameraRanges.length) {
+    renderRangesList();
+    return;
+  }
+  const currentFrameNumber = getCurrentFrame(getTimelineTime());
+  state.cameraRanges.forEach((range, idx) => {
+    const item = items[idx];
+    if (!item) return;
+    if (currentFrameNumber >= range.startFrame && currentFrameNumber <= range.endFrame) {
+      item.classList.add('active-playing');
+    } else {
+      item.classList.remove('active-playing');
+    }
+  });
+}
