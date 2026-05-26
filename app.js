@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.26.48";
+const APP_VERSION = "v2026.05.26.55";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -88,6 +88,7 @@ const buttons = {
   reset: document.querySelector("#resetCameraButton"),
   add: document.querySelector("#addKeyframeButton"),
   addShakeKeyframe: document.querySelector("#addShakeKeyframeButton"),
+  repairFovKeyframes: document.querySelector("#repairFovKeyframesButton"),
   timelineToggle: document.querySelector("#timelineToggleButton"),
   snapToggle: document.querySelector("#snapToggleButton"),
   loopToggle: document.querySelector("#loopToggleButton"),
@@ -311,6 +312,11 @@ function updateDetailsMenuLabel() {
   const isClosed = appShell.classList.contains("panel-closed");
   sideToggleButton.setAttribute("aria-expanded", String(!isClosed));
   if (label) label.textContent = isClosed ? "Open Controls" : "Close Controls";
+}
+
+function toggleTimelinePanel() {
+  const hidden = document.body.classList.toggle("timeline-hidden");
+  setStatus(hidden ? "Timeline hidden. Press D to show it." : "Timeline visible.");
 }
 
 function closeToolbarMenus(exceptMenu = null) {
@@ -2819,6 +2825,15 @@ function getExportCompensationScale() {
   return parseNumber(inputs.exportCompensation?.value, 0) / 100;
 }
 
+const NEOBOARD_RADIUS_SCALE = 4.75;
+
+function getNeoboardExportRadius(radius) {
+  const sourceRadius = Math.max(parseNumber(radius, state.defaultCamera.orbit.radius), 0.01);
+  const unitScale = sourceRadius < 20 ? NEOBOARD_RADIUS_SCALE : 1;
+  const compensationScale = 1 + getExportCompensationScale();
+  return sourceRadius * unitScale * compensationScale;
+}
+
 function getCameraDelta(from, to) {
   if (!from || !to) return Infinity;
   return Math.max(
@@ -2843,6 +2858,40 @@ function getCameraTimelineMotion(frames) {
   return { maxDelta, totalDelta };
 }
 
+function isLikelyLegacyLensAsFov(value) {
+  const fov = parseNumber(value, NaN);
+  return Number.isFinite(fov) && fov >= 12 && fov <= 35;
+}
+
+function repairLegacyFovKeyframes() {
+  let repaired = 0;
+  state.keyframes = state.keyframes.map((frame) => {
+    if (!isLikelyLegacyLensAsFov(frame.fov)) return frame;
+    const legacyLens = frame.fov;
+    const fixedFov = lensToFov(legacyLens);
+    repaired += 1;
+    return {
+      ...frame,
+      lens: legacyLens,
+      fov: fixedFov,
+    };
+  });
+
+  renderKeyframes();
+  renderTimelineMarkers();
+  seek(getTimelineTime());
+  setStatus(
+    repaired
+      ? `Repaired ${repaired} legacy FOV keyframe${repaired === 1 ? "" : "s"} from lens-mm values to real FOV degrees.`
+      : "No legacy FOV keyframes found.",
+    repaired ? "normal" : "warn",
+  );
+}
+
+function getSuspiciousFovCount(frames) {
+  return frames.filter((frame) => isLikelyLegacyLensAsFov(frame.fov)).length;
+}
+
 function getExportHoldWarnings(frames) {
   const warnings = [];
   for (let index = 1; index < frames.length; index += 1) {
@@ -2865,7 +2914,12 @@ function getExportHoldWarnings(frames) {
 }
 
 function compensateFrameForExport(frame) {
-  return cloneKeyframe(frame);
+  const exportedFrame = cloneKeyframe(frame);
+  exportedFrame.orbit = {
+    ...exportedFrame.orbit,
+    radius: getNeoboardExportRadius(exportedFrame.orbit.radius),
+  };
+  return exportedFrame;
 }
 
 function compensateRangeForExport(range) {
@@ -2935,18 +2989,6 @@ function exportCameraJson() {
   const data = {
     currentCameraState,
     keyframes,
-    cameraRanges: state.cameraRanges ? state.cameraRanges.map(r => {
-      const compensated = compensateRangeForExport(r);
-      return {
-        startFrame: compensated.startFrame,
-        endFrame: compensated.endFrame,
-        dynamic: compensated.dynamic,
-        orbit: compensated.orbit ? { ...compensated.orbit } : null,
-        target: compensated.target ? { ...compensated.target } : null,
-        lens: compensated.lens,
-        fov: Number(compensated.fov.toFixed(3))
-      };
-    }) : [],
     animationSettings: {
       fps: state.fps,
       duration: state.duration,
@@ -2972,7 +3014,9 @@ function exportCameraJson() {
       version: "1.1",
       creator: "LearningPad 3D Web Camera Controls",
       timestamp: new Date().toISOString(),
-      totalKeyframes: sortedFrames.length
+      totalKeyframes: sortedFrames.length,
+      exportRadiusScale: NEOBOARD_RADIUS_SCALE,
+      exportCompensation: Number((getExportCompensationScale() * 100).toFixed(0))
     }
   };
 
@@ -4789,6 +4833,9 @@ window.addEventListener("keydown", (event) => {
     } else if (event.code === "KeyF") {
       event.preventDefault();
       fitModel();
+    } else if (event.code === "KeyD") {
+      event.preventDefault();
+      toggleTimelinePanel();
     } else if (event.ctrlKey && event.code === "KeyI") {
       event.preventDefault();
       openCursorImportMenu();
@@ -5009,6 +5056,9 @@ document.querySelectorAll(".ai-chip").forEach((chip) => {
 if (buttons.aiPickTarget) {
   buttons.aiPickTarget.addEventListener("click", toggleAiPickTargetMode);
 }
+if (buttons.repairFovKeyframes) {
+  buttons.repairFovKeyframes.addEventListener("click", repairLegacyFovKeyframes);
+}
 if (buttons.aiClearTarget) {
   buttons.aiClearTarget.addEventListener("click", clearAiPickedTarget);
 }
@@ -5176,12 +5226,10 @@ modelViewer.addEventListener("pointermove", (event) => {
 
 modelViewer.addEventListener("wheel", (event) => {
   if (state.isMouseOverTimeline || state.aiPickTargetMode) return;
-  if (event.ctrlKey) {
-    event.stopImmediatePropagation();
-    event.preventDefault();
-    const fov = zoomFovFromWheel(event.deltaY);
-    setStatus(`FOV zoom: ${fov.toFixed(1)}deg`);
-  }
+  event.stopImmediatePropagation();
+  event.preventDefault();
+  const fov = zoomFovFromWheel(event.deltaY);
+  setStatus(`FOV zoom: ${fov.toFixed(1)}deg`);
 }, { passive: false, capture: true });
 
 
