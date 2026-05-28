@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260526-48" />
+    <link rel="stylesheet" href="./styles.css?v=20260526-55" />
     <link rel="manifest" href="./manifest.json" />
     <script
       type="module"
@@ -17,7 +17,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260526-48")
+          navigator.serviceWorker.register("./sw.js?v=20260526-55")
             .then((reg) => console.log("Service Worker registered!"))
             .catch((err) => console.log("Service Worker registration failed:", err));
         });
@@ -87,7 +87,7 @@
         <div class="viewer-toolbar">
           <div>
             <h1>Camera Animation Tool</h1>
-            <span id="appVersionBadge" class="app-version-badge">v2026.05.26.48</span>
+            <span id="appVersionBadge" class="app-version-badge">v2026.05.26.55</span>
             <p id="statusText">Load a GLB or GLTF model to begin.</p>
           </div>
           <div class="toolbar-actions">
@@ -158,6 +158,7 @@
           exposure="1"
           shadow-intensity="0.75"
           disable-tap
+          disable-zoom
           min-field-of-view="1deg"
           max-field-of-view="120deg"
           min-camera-orbit="auto auto 0m"
@@ -529,6 +530,9 @@
             <input id="exportCompensationInput" type="range" min="0" max="100" step="1" value="0" />
           </label>
           <div class="button-row keyframe-actions">
+            <button id="repairFovKeyframesButton" type="button" title="Repair old keyframes where lens mm was saved as FOV">
+              <span>Repair FOV Keys</span>
+            </button>
             <button id="nudgeKeyframeLeftButton" type="button">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
               <span>Move -1F</span>
@@ -602,6 +606,6 @@
     <audio id="timelineAudio"></audio>
 
      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script defer src="./app.js?v=20260526-48"></script>
+    <script defer src="./app.js?v=20260526-55"></script>
   </body>
 </html>
