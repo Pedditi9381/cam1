@@ -1,9 +1,9 @@
-const CACHE_NAME = "camanim-cache-v20260526-55";
+const CACHE_NAME = "camanim-cache-v20260528-59";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=20260526-55",
-  "./app.js?v=20260526-55",
+  "./styles.css?v=20260528-59",
+  "./app.js?v=20260528-59",
   "./app-icon.png",
   "./sample-camera.json",
   "./sample-labels.json"

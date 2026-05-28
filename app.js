@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.26.55";
+const APP_VERSION = "v2026.05.28.59";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -238,6 +238,8 @@ const state = {
   audioWaveformData: [],
   cameraRanges: [],
   showLabels: true,
+  exportZoomPreviewFactor: 1,
+  suppressCameraSyncUntil: 0,
 };
 
 function cloneKeyframe(frame) {
@@ -1182,10 +1184,11 @@ function captureLiveCameraFrame(time = getTimelineTime()) {
   try {
     const orbit = modelViewer.getCameraOrbit?.();
     if (orbit) {
+      const previewFactor = state.exportZoomPreviewFactor || 1;
       frame.orbit = {
         yaw: (orbit.theta * 180) / Math.PI,
         pitch: (orbit.phi * 180) / Math.PI,
-        radius: Math.max(parseNumber(orbit.radius, frame.orbit.radius), 0.01),
+        radius: Math.max(parseNumber(orbit.radius, frame.orbit.radius) / previewFactor, 0.01),
       };
     }
   } catch (error) {
@@ -1193,10 +1196,11 @@ function captureLiveCameraFrame(time = getTimelineTime()) {
     if (orbitAttr) {
       const parts = String(orbitAttr).trim().split(/\s+/);
       if (parts.length >= 3) {
+        const previewFactor = state.exportZoomPreviewFactor || 1;
         frame.orbit = {
           yaw: parseNumber(parseFloat(parts[0]), frame.orbit.yaw),
           pitch: parseNumber(parseFloat(parts[1]), frame.orbit.pitch),
-          radius: Math.max(parseNumber(parseFloat(parts[2]), frame.orbit.radius), 0.01),
+          radius: Math.max(parseNumber(parseFloat(parts[2]), frame.orbit.radius) / previewFactor, 0.01),
         };
       }
     }
@@ -1240,9 +1244,10 @@ function syncInputsFromLiveCamera() {
   try {
     const orbit = modelViewer.getCameraOrbit();
     if (orbit) {
+      const previewFactor = state.exportZoomPreviewFactor || 1;
       inputs.yaw.value = ((orbit.theta * 180) / Math.PI).toFixed(1);
       inputs.pitch.value = ((orbit.phi * 180) / Math.PI).toFixed(1);
-      inputs.radius.value = orbit.radius.toFixed(2);
+      inputs.radius.value = (orbit.radius / previewFactor).toFixed(2);
       didSync = true;
     }
 
@@ -1265,9 +1270,10 @@ function syncInputsFromLiveCamera() {
     if (orbitAttr) {
       const parts = orbitAttr.trim().split(/\s+/);
       if (parts.length >= 3) {
+        const previewFactor = state.exportZoomPreviewFactor || 1;
         inputs.yaw.value = parseFloat(parts[0]).toFixed(1);
         inputs.pitch.value = parseFloat(parts[1]).toFixed(1);
-        inputs.radius.value = parseFloat(parts[2]).toFixed(2);
+        inputs.radius.value = (parseFloat(parts[2]) / previewFactor).toFixed(2);
         didSync = true;
       }
     }
@@ -1290,6 +1296,7 @@ function syncInputsFromLiveCamera() {
 }
 
 function applyCamera(frame, options = {}) {
+  state.suppressCameraSyncUntil = performance.now() + 120;
   const smooth = clamp(parseNumber(inputs.smooth.value, 0.35), 0, 1);
   const inputFov = parseNumber(inputs.lens.value, state.defaultCamera.fov);
   const hasFrameFov = Number.isFinite(parseNumber(frame.fov, NaN));
@@ -1333,7 +1340,11 @@ function applyCamera(frame, options = {}) {
     targetY += targetNoiseY;
   }
 
-  modelViewer.cameraOrbit = `${yaw.toFixed(2)}deg ${pitch.toFixed(2)}deg ${frame.orbit.radius.toFixed(3)}m`;
+  const previewFactor = options.disableExportPreview ? 1 : getExportPreviewZoomFactor();
+  state.exportZoomPreviewFactor = previewFactor;
+  const displayRadius = frame.orbit.radius * previewFactor;
+
+  modelViewer.cameraOrbit = `${yaw.toFixed(2)}deg ${pitch.toFixed(2)}deg ${displayRadius.toFixed(3)}m`;
   modelViewer.cameraTarget = `${targetX.toFixed(3)}m ${targetY.toFixed(3)}m ${frame.target.z.toFixed(3)}m`;
   modelViewer.fieldOfView = `${fov.toFixed(2)}deg`;
   if (options.instant && typeof modelViewer.jumpCameraToGoal === "function") {
@@ -2822,10 +2833,21 @@ function applyPreset(preset) {
 }
 
 function getExportCompensationScale() {
-  return parseNumber(inputs.exportCompensation?.value, 0) / 100;
+  return clamp(parseNumber(inputs.exportCompensation?.value, 0), -50, 100) / 100;
 }
 
-const NEOBOARD_RADIUS_SCALE = 4.75;
+function getExportCompensationLabel(value = inputs.exportCompensation?.value) {
+  const percent = clamp(parseNumber(value, 0), -50, 100);
+  if (percent > 0) return `Zoom out +${percent.toFixed(0)}%`;
+  if (percent < 0) return `Zoom in ${percent.toFixed(0)}%`;
+  return "No zoom offset";
+}
+
+function getExportPreviewZoomFactor() {
+  return Math.max(0.1, 1 + getExportCompensationScale());
+}
+
+const NEOBOARD_RADIUS_SCALE = 5.55;
 
 function getNeoboardExportRadius(radius) {
   const sourceRadius = Math.max(parseNumber(radius, state.defaultCamera.orbit.radius), 0.01);
@@ -4642,8 +4664,10 @@ inputs.shakeIntensity.addEventListener("input", () => {
 
 const exportCompensationReadout = document.querySelector("#exportCompensationReadout");
 if (inputs.exportCompensation && exportCompensationReadout) {
+  exportCompensationReadout.textContent = getExportCompensationLabel();
   inputs.exportCompensation.addEventListener("input", () => {
-    exportCompensationReadout.textContent = `${parseNumber(inputs.exportCompensation.value, 0).toFixed(0)}%`;
+    exportCompensationReadout.textContent = getExportCompensationLabel(inputs.exportCompensation.value);
+    seek(getTimelineTime());
   });
 }
 
@@ -4916,6 +4940,7 @@ modelViewer.addEventListener("load", () => {
 
 modelViewer.addEventListener("camera-change", () => {
   if (state.isPlaying) return;
+  if (performance.now() < state.suppressCameraSyncUntil) return;
   const didSync = syncInputsFromLiveCamera();
   if (state.autoKeyframe && didSync) {
     recordAutoKeyframe();

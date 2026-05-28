@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260526-55" />
+    <link rel="stylesheet" href="./styles.css?v=20260528-59" />
     <link rel="manifest" href="./manifest.json" />
     <script
       type="module"
@@ -17,7 +17,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260526-55")
+          navigator.serviceWorker.register("./sw.js?v=20260528-59")
             .then((reg) => console.log("Service Worker registered!"))
             .catch((err) => console.log("Service Worker registration failed:", err));
         });
@@ -87,7 +87,7 @@
         <div class="viewer-toolbar">
           <div>
             <h1>Camera Animation Tool</h1>
-            <span id="appVersionBadge" class="app-version-badge">v2026.05.26.55</span>
+            <span id="appVersionBadge" class="app-version-badge">v2026.05.28.59</span>
             <p id="statusText">Load a GLB or GLTF model to begin.</p>
           </div>
           <div class="toolbar-actions">
@@ -524,10 +524,10 @@
           <h2>Keyframes</h2>
           <label class="range-control">
             <span>
-              Export Match Compensation
-              <strong id="exportCompensationReadout">0%</strong>
+              Export Zoom Match
+              <strong id="exportCompensationReadout">Zoom out +75%</strong>
             </span>
-            <input id="exportCompensationInput" type="range" min="0" max="100" step="1" value="0" />
+            <input id="exportCompensationInput" type="range" min="-50" max="100" step="1" value="75" />
           </label>
           <div class="button-row keyframe-actions">
             <button id="repairFovKeyframesButton" type="button" title="Repair old keyframes where lens mm was saved as FOV">
@@ -606,6 +606,6 @@
     <audio id="timelineAudio"></audio>
 
      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script defer src="./app.js?v=20260526-55"></script>
+    <script defer src="./app.js?v=20260528-59"></script>
   </body>
 </html>
