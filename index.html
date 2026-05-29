@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260528-59" />
+    <link rel="stylesheet" href="./styles.css?v=20260528-60" />
     <link rel="manifest" href="./manifest.json" />
     <script
       type="module"
@@ -17,7 +17,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260528-59")
+          navigator.serviceWorker.register("./sw.js?v=20260528-60")
             .then((reg) => console.log("Service Worker registered!"))
             .catch((err) => console.log("Service Worker registration failed:", err));
         });
@@ -87,7 +87,7 @@
         <div class="viewer-toolbar">
           <div>
             <h1>Camera Animation Tool</h1>
-            <span id="appVersionBadge" class="app-version-badge">v2026.05.28.59</span>
+            <span id="appVersionBadge" class="app-version-badge">v2026.05.28.60</span>
             <p id="statusText">Load a GLB or GLTF model to begin.</p>
           </div>
           <div class="toolbar-actions">
@@ -131,6 +131,47 @@
                 <button id="sideToggleButton" class="menu-action side-toggle" type="button" aria-expanded="false" aria-controls="controlPanel">
                   <span>Open Controls</span>
                 </button>
+              </div>
+            </details>
+            <details class="menu-dropdown help-menu">
+              <summary>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 1 1 5.82 1c0 2-3 2-3 4"></path><path d="M12 17h.01"></path></svg>
+                <span>Help</span>
+              </summary>
+              <div class="menu-content help-content">
+                <section>
+                  <h2>Shortcuts</h2>
+                  <dl class="help-shortcuts">
+                    <div><dt>Space</dt><dd>Play or pause timeline</dd></div>
+                    <div><dt>Left / Right</dt><dd>Move one frame back or forward</dd></div>
+                    <div><dt>K</dt><dd>Add or replace keyframe at current frame</dd></div>
+                    <div><dt>Delete</dt><dd>Delete selected keyframe</dd></div>
+                    <div><dt>D</dt><dd>Show or hide timeline</dd></div>
+                    <div><dt>F</dt><dd>Fit model to screen</dd></div>
+                    <div><dt>Ctrl + I</dt><dd>Open import menu at mouse position</dd></div>
+                    <div><dt>Ctrl + right drag</dt><dd>Change FOV zoom</dd></div>
+                    <div><dt>Mouse wheel</dt><dd>Change FOV over viewport, zoom timeline over timeline</dd></div>
+                  </dl>
+                </section>
+                <section>
+                  <h2>Workflow</h2>
+                  <ul class="help-list">
+                    <li>Import GLB first, then camera JSON, labels, and audio when needed.</li>
+                    <li>Move the camera, set FOV, then add a keyframe on the timeline.</li>
+                    <li>One frame keeps one keyframe; adding again replaces that frame.</li>
+                    <li>Use Export Zoom Match to preview and export Neoboard zoom compensation.</li>
+                    <li>Export JSON only after the viewport and timeline keyframes look correct.</li>
+                  </ul>
+                </section>
+                <section>
+                  <h2>Timeline</h2>
+                  <ul class="help-list">
+                    <li>Dots are camera keyframes. Click a dot to jump to that frame.</li>
+                    <li>Drag keyframes to move them. Use copy, paste, and delete in the timeline bar.</li>
+                    <li>Enable the magnet to snap the time slider to multiples of 5 frames.</li>
+                    <li>Use the transport buttons for first, previous, play, next, and last frame.</li>
+                  </ul>
+                </section>
               </div>
             </details>
           </div>
@@ -606,6 +647,6 @@
     <audio id="timelineAudio"></audio>
 
      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script defer src="./app.js?v=20260528-59"></script>
+    <script defer src="./app.js?v=20260528-60"></script>
   </body>
 </html>
