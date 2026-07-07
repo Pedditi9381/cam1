@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260529-03" />
+    <link rel="stylesheet" href="./styles.css?v=2.1" />
     <link rel="manifest" href="./manifest.json" />
     <script
       type="module"
@@ -17,16 +17,42 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=20260529-03")
+          navigator.serviceWorker.register("./sw.js?v=2.1")
             .then((reg) => console.log("Service Worker registered!"))
             .catch((err) => console.log("Service Worker registration failed:", err));
         });
       }
     </script>
+    <script>
+      (function() {
+        const today = new Date().toDateString();
+        const lastOpen = localStorage.getItem("camanim_last_open_date");
+        if (lastOpen === today) {
+          document.documentElement.classList.add("bypass-splash");
+        } else {
+          localStorage.setItem("camanim_last_open_date", today);
+          window.addEventListener("DOMContentLoaded", () => {
+            const splash = document.getElementById("splashScreen");
+            if (splash) {
+              setTimeout(() => {
+                splash.classList.add("fade-out");
+                setTimeout(() => {
+                  splash.style.display = "none";
+                }, 500);
+              }, 3000);
+            }
+          });
+        }
+      })();
+    </script>
   </head>
   <body>
+    <div id="splashScreen" class="splash-screen">
+      <img src="./App-icon3.png" alt="AI Dynamic Cam Logo" class="splash-logo" />
+    </div>
     <section id="importScreen" class="import-screen" aria-label="Import project files">
       <div class="import-header">
+        <img src="./App-icon3.png" alt="AI Dynamic Cam" class="import-logo" />
         <h1>Camera Animation Tool</h1>
         <p>Import your scene files before opening the editor.</p>
       </div>
@@ -86,8 +112,9 @@
       <section class="viewer-panel" aria-label="3D model preview">
         <div class="viewer-toolbar">
           <div>
+            <img src="./App-icon3.png" alt="AI Dynamic Cam" class="toolbar-logo" />
             <h1>Camera Animation Tool</h1>
-            <span id="appVersionBadge" class="app-version-badge">v2026.05.29.03</span>
+            <span id="appVersionBadge" class="app-version-badge">v2.1</span>
             <p id="statusText">Load a GLB or GLTF model to begin.</p>
           </div>
           <div class="toolbar-actions">
@@ -293,16 +320,11 @@
             <div id="playheadBubble" class="playhead-bubble">F0</div>
             <input id="bottomTimelineInput" class="bottom-timeline" type="range" min="0" max="1000" value="0" />
             <div id="timelineMarkers" class="timeline-markers"></div>
-            
-            <!-- Dual lanes representing dynamic vs static tracks -->
+            <!-- Lanes representing dynamic track -->
             <div class="timeline-tracks-lanes">
               <div id="timeline-track-dynamic" class="timeline-lane dynamic-lane">
                 <span class="lane-label">DYNAMIC CAMERA TRACK</span>
                 <div id="lane-ranges-dynamic" class="lane-ranges"></div>
-              </div>
-              <div id="timeline-track-static" class="timeline-lane static-lane">
-                <span class="lane-label">STATIC POSITION TRACK</span>
-                <div id="lane-ranges-static" class="lane-ranges"></div>
               </div>
             </div>
             <div id="audioTrack" class="audio-track" hidden>
@@ -566,9 +588,9 @@
           <label class="range-control">
             <span>
               Export Zoom Match
-              <strong id="exportCompensationReadout">Zoom out +75%</strong>
+              <strong id="exportCompensationReadout">Zoom in +30%</strong>
             </span>
-            <input id="exportCompensationInput" type="range" min="-50" max="100" step="1" value="75" />
+            <input id="exportCompensationInput" type="range" min="-50" max="100" step="1" value="30" />
           </label>
           <div class="button-row keyframe-actions">
             <button id="repairFovKeyframesButton" type="button" title="Repair old keyframes where lens mm was saved as FOV">
@@ -647,6 +669,6 @@
     <audio id="timelineAudio"></audio>
 
      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script defer src="./app.js?v=20260529-03"></script>
+    <script defer src="./app.js?v=2.1"></script>
   </body>
 </html>

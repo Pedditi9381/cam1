@@ -1,4 +1,4 @@
-const APP_VERSION = "v2026.05.29.03";
+const APP_VERSION = "v2.1";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");

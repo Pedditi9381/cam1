@@ -106,6 +106,13 @@ body:not(.editor-open) .app-shell {
   display: none;
 }
 
+.import-logo {
+  height: clamp(80px, 12vh, 120px);
+  width: auto;
+  margin: 0 auto 16px;
+  object-fit: contain;
+}
+
 .import-header {
   display: grid;
   gap: 12px;
@@ -373,8 +380,15 @@ body:not(.editor-open) .app-shell {
 
 .viewer-toolbar > div:first-child {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
+}
+
+.toolbar-logo {
+  height: 24px;
+  width: auto;
+  object-fit: contain;
+  margin-right: 4px;
 }
 
 .viewer-toolbar h1 {
@@ -1399,7 +1413,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   border: 1px solid var(--line);
   border-radius: 0;
   min-height: var(--neoboard-bottom-bar);
-  background: rgba(9, 9, 10, 0.88);
+  background: rgba(9, 9, 10, 0.98);
   backdrop-filter: blur(8px);
   box-shadow: var(--shadow);
   padding: 12px;
@@ -1702,7 +1716,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   padding: 24px 18px 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(20, 20, 20, 0.55);
+  background: rgba(20, 20, 20, 0.85);
   transition: min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1), padding 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -2860,4 +2874,73 @@ body.timeline-hidden .timeline-header {
 
 body.timeline-hidden .timeline-header-center {
   width: auto !important;
+}
+
+/* Splash Screen (first open of the day) */
+.bypass-splash .splash-screen {
+  display: none !important;
+}
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  background: #05070c;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.5s ease-out, visibility 0.5s;
+}
+
+.splash-screen.fade-out {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.splash-logo {
+  max-width: 320px;
+  width: 75%;
+  height: auto;
+  object-fit: contain;
+  opacity: 0;
+  transform: scale(0.9);
+  -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 35%, rgba(0, 0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-size: 300% 100%;
+  -webkit-mask-position: 100% 0;
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 35%, rgba(0, 0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%);
+  mask-size: 300% 100%;
+  mask-position: 100% 0;
+  animation: 
+    splashEntrance 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+    linearWipe 1.8s cubic-bezier(0.33, 1, 0.68, 1) forwards;
+}
+
+@keyframes splashEntrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+    filter: blur(4px);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.02);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes linearWipe {
+  0% {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  100% {
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
+  }
 }
