@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=2.1" />
+    <link rel="stylesheet" href="./styles.css?v=2.1.1" />
     <link rel="manifest" href="./manifest.json" />
     <script
       type="module"
@@ -17,7 +17,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js?v=2.1")
+          navigator.serviceWorker.register("./sw.js?v=2.1.1")
             .then((reg) => console.log("Service Worker registered!"))
             .catch((err) => console.log("Service Worker registration failed:", err));
         });
@@ -114,7 +114,7 @@
           <div>
             <img src="./App-icon3.png" alt="AI Dynamic Cam" class="toolbar-logo" />
             <h1>Camera Animation Tool</h1>
-            <span id="appVersionBadge" class="app-version-badge">v2.1</span>
+            <span id="appVersionBadge" class="app-version-badge">v2.1.1</span>
             <p id="statusText">Load a GLB or GLTF model to begin.</p>
           </div>
           <div class="toolbar-actions">
@@ -669,6 +669,6 @@
     <audio id="timelineAudio"></audio>
 
      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script defer src="./app.js?v=2.1"></script>
+    <script defer src="./app.js?v=2.1.1"></script>
   </body>
 </html>
