@@ -190,6 +190,7 @@ const CAMERA_PRESETS = [
 
 const state = {
   modelUrl: "",
+  modelName: "",
   audioUrl: "",
   audioDuration: 0,
   audioName: "",
@@ -3086,18 +3087,24 @@ function exportCameraJson() {
     }
   };
 
+  let filename = "camera-animation.json";
+  if (state.modelName) {
+    const lastDot = state.modelName.lastIndexOf(".");
+    filename = (lastDot !== -1 ? state.modelName.substring(0, lastDot) : state.modelName) + "_Camera_animation.json";
+  }
+
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "camera-animation.json";
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
   const holdWarnings = getExportHoldWarnings(sortedFrames);
   const warnings = holdWarnings.length ? ` (${holdWarnings.length} still/hold section${holdWarnings.length === 1 ? "" : "s"} detected)` : "";
-  setStatus(`Exported camera-animation.json${warnings}`);
+  setStatus(`Exported ${filename}${warnings}`);
 }
 
 function downloadJson(data, filename) {
@@ -3125,7 +3132,7 @@ function getWorkingFileData() {
       snapToFiveFrames: state.snapToFiveFrames,
       loopPlayback: state.loopPlayback,
     },
-    model: state.modelUrl ? { name: inputs.model.files?.[0]?.name ?? null } : null,
+    model: state.modelUrl ? { name: state.modelName || null } : null,
     audio: state.audioUrl
       ? {
         name: state.audioName,
@@ -3174,8 +3181,14 @@ function getWorkingFileData() {
 }
 
 function saveWorkingFile() {
-  downloadJson(getWorkingFileData(), "camera-working-file.json");
-  setStatus("Saved camera-working-file.json");
+  let filename = "camera-working-file.json";
+  if (state.modelName) {
+    const lastDot = state.modelName.lastIndexOf(".");
+    const baseName = lastDot !== -1 ? state.modelName.substring(0, lastDot) : state.modelName;
+    filename = `${baseName}-working-file.json`;
+  }
+  downloadJson(getWorkingFileData(), filename);
+  setStatus(`Saved ${filename}`);
 }
 
 async function loadWorkingFile(file) {
@@ -3185,6 +3198,7 @@ async function loadWorkingFile(file) {
   }
 
   state.fps = 24;
+  state.modelName = json.model?.name || "";
   const projectFrames = json.camera?.keyframes || [];
   state.keyframes = projectFrames.map((frame, index) => normalizeKeyframe(frame, index, projectFrames.length));
   state.keyframes.sort((a, b) => a.time - b.time);
@@ -3894,6 +3908,7 @@ async function loadModel(file) {
   state.modelAnimationDuration = 0;
   state.fps = 24;
   state.modelUrl = URL.createObjectURL(file);
+  state.modelName = file.name || "";
   modelViewer.src = state.modelUrl;
   modelViewer.removeAttribute("animation-name");
   inputs.animation.innerHTML = '<option value="">Loading animations...</option>';
