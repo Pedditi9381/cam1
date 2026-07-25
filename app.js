@@ -5360,7 +5360,7 @@ function renderTimelineTracks() {
     return;
   }
 
-  state.cameraRanges.forEach(range => {
+  state.cameraRanges.forEach((range, idx) => {
     // Clamped values to visible screen bounds
     const start = Math.max(range.startFrame, state.timelineViewStartFrame);
     const end = Math.min(range.endFrame, state.timelineViewEndFrame);
@@ -5373,7 +5373,14 @@ function renderTimelineTracks() {
     band.className = `timeline-range-band ${range.dynamic ? 'dynamic' : 'static'}`;
     band.style.left = `${left}%`;
     band.style.width = `${width}%`;
-    band.title = `${range.dynamic ? 'Dynamic' : 'Static'} (Frames ${range.startFrame} - ${range.endFrame})`;
+    band.style.cursor = 'pointer';
+    band.title = `${range.dynamic ? 'Dynamic' : 'Static'} Range #${idx + 1} (Frames ${range.startFrame + 1} - ${range.endFrame + 1}) — Click to Edit`;
+
+    band.addEventListener('click', (e) => {
+      e.stopPropagation();
+      goToFrame(range.startFrame);
+      showRangeEditForm(idx);
+    });
 
     if (range.dynamic && laneDynamic) {
       laneDynamic.appendChild(band);
@@ -5398,6 +5405,7 @@ function renderRangesList() {
   state.cameraRanges.forEach((range, idx) => {
     const li = document.createElement('li');
     li.className = 'range-item';
+    li.style.cursor = 'pointer';
     if (currentFrameNumber >= range.startFrame && currentFrameNumber <= range.endFrame) {
       li.classList.add('active-playing');
     }
@@ -5449,9 +5457,10 @@ function renderRangesList() {
     li.appendChild(info);
     li.appendChild(actions);
 
-    // Click item to jump to start frame
+    // Click item to jump to start frame AND open Edit Range form options
     li.addEventListener('click', () => {
       goToFrame(range.startFrame);
+      showRangeEditForm(idx);
     });
 
     list.appendChild(li);
@@ -5476,6 +5485,7 @@ function showRangeEditForm(idx = null) {
   if (!form) return;
   form.classList.remove('hidden');
   if (addBtn) addBtn.style.display = 'none';
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   const title = document.getElementById('rangeFormTitle');
   const editIdx = document.getElementById('editRangeIndex');
@@ -5500,21 +5510,21 @@ function showRangeEditForm(idx = null) {
   let end = 60;
   let dynamic = true;
 
-  if (idx !== null) {
-    title.textContent = 'Edit Range';
-    editIdx.value = idx;
+  if (idx !== null && idx >= 0 && idx < state.cameraRanges.length) {
     const r = state.cameraRanges[idx];
+    title.textContent = `Edit Range (Frames ${r.startFrame + 1} - ${r.endFrame + 1})`;
+    editIdx.value = idx;
     start = r.startFrame;
     end = r.endFrame;
     dynamic = r.dynamic;
 
-    yawInput.value = Math.round(r.orbit?.yaw ?? currentKf.orbit.yaw);
-    pitchInput.value = Math.round(r.orbit?.pitch ?? currentKf.orbit.pitch);
-    radiusInput.value = (r.orbit?.radius ?? currentKf.orbit.radius).toFixed(2);
-    targetXInput.value = (r.target?.x ?? currentKf.target.x).toFixed(2);
-    targetYInput.value = (r.target?.y ?? currentKf.target.y).toFixed(2);
-    targetZInput.value = (r.target?.z ?? currentKf.target.z).toFixed(2);
-    lensInput.value = r.lens || 29;
+    if (yawInput) yawInput.value = Math.round(r.orbit?.yaw ?? currentKf.orbit.yaw);
+    if (pitchInput) pitchInput.value = Math.round(r.orbit?.pitch ?? currentKf.orbit.pitch);
+    if (radiusInput) radiusInput.value = (r.orbit?.radius ?? currentKf.orbit.radius).toFixed(2);
+    if (targetXInput) targetXInput.value = (r.target?.x ?? currentKf.target.x).toFixed(2);
+    if (targetYInput) targetYInput.value = (r.target?.y ?? currentKf.target.y).toFixed(2);
+    if (targetZInput) targetZInput.value = (r.target?.z ?? currentKf.target.z).toFixed(2);
+    if (lensInput) lensInput.value = r.lens || 29;
   } else {
     title.textContent = 'Add Range';
     editIdx.value = '';
@@ -5526,20 +5536,20 @@ function showRangeEditForm(idx = null) {
     end = Math.min(getTotalFrames(), proposedStart + 60);
     dynamic = true;
 
-    yawInput.value = Math.round(currentKf.orbit.yaw);
-    pitchInput.value = Math.round(currentKf.orbit.pitch);
-    radiusInput.value = currentKf.orbit.radius.toFixed(2);
-    targetXInput.value = currentKf.target.x.toFixed(2);
-    targetYInput.value = currentKf.target.y.toFixed(2);
-    targetZInput.value = currentKf.target.z.toFixed(2);
-    lensInput.value = currentKf.lens || 29;
+    if (yawInput) yawInput.value = Math.round(currentKf.orbit.yaw);
+    if (pitchInput) pitchInput.value = Math.round(currentKf.orbit.pitch);
+    if (radiusInput) radiusInput.value = currentKf.orbit.radius.toFixed(2);
+    if (targetXInput) targetXInput.value = currentKf.target.x.toFixed(2);
+    if (targetYInput) targetYInput.value = currentKf.target.y.toFixed(2);
+    if (targetZInput) targetZInput.value = currentKf.target.z.toFixed(2);
+    if (lensInput) lensInput.value = currentKf.lens || 29;
   }
 
-  startInput.value = start + 1;
-  endInput.value = end + 1;
+  if (startInput) startInput.value = start + 1;
+  if (endInput) endInput.value = end + 1;
   if (startTimeInput) startTimeInput.value = (start / state.fps).toFixed(3);
   if (endTimeInput) endTimeInput.value = (end / state.fps).toFixed(3);
-  dynamicInput.checked = dynamic;
+  if (dynamicInput) dynamicInput.checked = dynamic;
 
   if (staticSettings) {
     staticSettings.classList.toggle('hidden', dynamic);
@@ -5702,3 +5712,47 @@ function updateActiveRangeHighlight() {
     }
   });
 }
+
+function initSnapMode() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('snap');
+  if (!mode) return;
+
+  if (mode !== 'import') {
+    const skipBtn = document.querySelector('#skipImportButton');
+    if (skipBtn) skipBtn.click();
+  }
+
+  setTimeout(() => {
+    if (mode === 'ranges') {
+      const addBtn = document.querySelector('#addRangeBtn');
+      if (addBtn) addBtn.click();
+      const form = document.querySelector('#rangeEditorForm');
+      if (form) form.classList.remove('hidden');
+      const startInp = document.querySelector('#rangeStart');
+      if (startInp) startInp.value = '1';
+      const endInp = document.querySelector('#rangeEnd');
+      if (endInp) endInp.value = '101';
+      const rightAside = document.querySelector('.app-aside-right') || document.querySelector('aside:last-of-type');
+      if (rightAside) rightAside.scrollTop = rightAside.scrollHeight;
+    } else if (mode === 'ai_director') {
+      const promptInp = document.querySelector('#aiPromptInput');
+      if (promptInp) promptInp.value = 'Create a smooth 360 orbit sweep starting low and ending top down over 6 seconds';
+      const customRange = document.querySelector('#aiCustomRangeToggle');
+      if (customRange && !customRange.checked) customRange.click();
+    } else if (mode === 'lens') {
+      const rightAside = document.querySelector('.app-aside-right') || document.querySelector('aside:last-of-type');
+      if (rightAside) rightAside.scrollTop = 250;
+    } else if (mode === 'fx') {
+      const shakeChk = document.querySelector('#shakeEnabledInput');
+      if (shakeChk) {
+        shakeChk.checked = true;
+        shakeChk.dispatchEvent(new Event('change'));
+      }
+      const rightAside = document.querySelector('.app-aside-right') || document.querySelector('aside:last-of-type');
+      if (rightAside) rightAside.scrollTop = 450;
+    }
+  }, 500);
+}
+setTimeout(initSnapMode, 600);
+

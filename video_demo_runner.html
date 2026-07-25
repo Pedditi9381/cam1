@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>3D Camera Animation Tool — Interactive Video Instructions</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Fira+Code:wght@500;700&display=swap');
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; font-family: 'Inter', sans-serif; background: #090d16; }
+
+    #appFrame {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* On-Screen Overlay Banners (Neo Board) */
+    .neo-overlay {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 99999;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1.5px solid rgba(99, 102, 241, 0.6);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(99, 102, 241, 0.3);
+      border-radius: 14px;
+      padding: 14px 28px;
+      color: #ffffff;
+      text-align: center;
+      max-width: 850px;
+      width: 90%;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .neo-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: #ffffff;
+      font-size: 9pt;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 3px 12px;
+      border-radius: 20px;
+      margin-bottom: 6px;
+    }
+
+    .neo-title {
+      font-size: 14pt;
+      font-weight: 800;
+      margin: 0 0 4px 0;
+      color: #ffffff;
+    }
+
+    .neo-desc {
+      font-size: 10pt;
+      color: #cbd5e1;
+      margin: 0;
+      line-height: 1.4;
+    }
+
+    .neo-tags {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .neo-tag {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #a5b4fc;
+      font-size: 8.5pt;
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    /* Floating Step Counter */
+    .step-indicator {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      z-index: 99999;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #818cf8;
+      font-family: 'Fira Code', monospace;
+      font-size: 11pt;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- On-Screen Instruction Banner (Neo Board) -->
+  <div id="neoOverlay" class="neo-overlay">
+    <div id="neoBadge" class="neo-badge">Video Instructions • Step 1</div>
+    <div id="neoTitle" class="neo-title">Welcome: Importing 3D Cube Model</div>
+    <div id="neoDesc" class="neo-desc">Loading 3D Cube Model into the central viewport and launching editor workspace...</div>
+    <div id="neoTags" class="neo-tags">
+      <span class="neo-tag">3D Viewport</span>
+      <span class="neo-tag">GLB Cube</span>
+      <span class="neo-tag">Editor Setup</span>
+    </div>
+  </div>
+
+  <div id="stepIndicator" class="step-indicator">STEP 1 / 5</div>
+
+  <!-- Embedded Web App Frame -->
+  <iframe id="appFrame" src="index.html"></iframe>
+
+  <script>
+    const steps = [
+      {
+        badge: "Video Instructions • Step 1",
+        title: "Importing 3D Cube Model & Interface Overview",
+        desc: "Loading 3D Cube into central viewport. Left Drawer: AI Director & Setup • Bottom: Timeline Track • Right Drawer: Camera Orbit, FOV Lens & Camera Ranges.",
+        tags: ["3D Viewport", "3D Cube Model", "Workspace Layout"],
+        action: (doc, win) => {
+          // Set model to sample_cube.glb
+          const mv = doc.querySelector('#modelViewer');
+          if (mv) mv.src = 'sample_cube.glb';
+          const skipBtn = doc.querySelector('#skipImportButton');
+          if (skipBtn) skipBtn.click();
+        }
+      },
+      {
+        badge: "Video Instructions • Step 2",
+        title: "Timeline Controls & Keyframing Engine",
+        desc: "Press Space to Play/Pause • Drag timeline playhead to scrub • Press 'K' to add keyframe pose • Catmull-Rom splines calculate smooth camera trajectories.",
+        tags: ["Timeline Scrubbing", "+ Keyframe (K)", "Catmull-Rom Splines"],
+        action: (doc, win) => {
+          const playBtn = doc.querySelector('#playButton');
+          if (playBtn) playBtn.click();
+        }
+      },
+      {
+        badge: "Video Instructions • Step 3",
+        title: "AI Camera Director & Prompting",
+        desc: "Enter text prompt or select Archetype (Orbit Sweep, Hero Push). AI calculates smooth 3D camera paths around the 3D Cube automatically.",
+        tags: ["AI Prompts", "Motion Archetypes", "Object Focus Target"],
+        action: (doc, win) => {
+          const promptInp = doc.querySelector('#aiPromptInput');
+          if (promptInp) promptInp.value = 'Create a smooth 360 orbit sweep around the 3D Cube over 6 seconds';
+        }
+      },
+      {
+        badge: "Video Instructions • Step 4",
+        title: "Camera Ranges & Sequence Control (Neo Board)",
+        desc: "Camera Ranges segment the timeline into frame bounds. Choose Dynamic Tracking Mode (continuous splines) vs Fixed Static Pose Holds per range!",
+        tags: ["Camera Ranges", "Dynamic Tracking Mode", "Fixed Pose Hold"],
+        action: (doc, win) => {
+          const addBtn = doc.querySelector('#addRangeBtn');
+          if (addBtn) addBtn.click();
+        }
+      },
+      {
+        badge: "Video Instructions • Step 5: Final Summary",
+        title: "Final Neo Board Summary & Exporting",
+        desc: "Use Dynamic Tracking for sweeps & reveals, and Fixed Static Holds for text overlays & details. Export clean Camera JSON or Save Project files!",
+        tags: ["Dynamic vs Static", "Camera JSON Export", "Save Project"],
+        action: (doc, win) => {}
+      }
+    ];
+
+    let currentStep = 0;
+
+    function renderStep(index) {
+      if (index >= steps.length) return;
+      const s = steps[index];
+      document.getElementById('neoBadge').textContent = s.badge;
+      document.getElementById('neoTitle').textContent = s.title;
+      document.getElementById('neoDesc').textContent = s.desc;
+      document.getElementById('stepIndicator').textContent = `STEP ${index + 1} / ${steps.length}`;
+      
+      const tagsContainer = document.getElementById('neoTags');
+      tagsContainer.innerHTML = s.tags.map(t => `<span class="neo-tag">${t}</span>`).join('');
+
+      const iframe = document.getElementById('appFrame');
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      const win = iframe.contentWindow;
+      try {
+        s.action(doc, win);
+      } catch (e) { console.error(e); }
+    }
+
+    const iframe = document.getElementById('appFrame');
+    iframe.onload = () => {
+      setTimeout(() => {
+        renderStep(0);
+        setInterval(() => {
+          currentStep = (currentStep + 1) % steps.length;
+          renderStep(currentStep);
+        }, 5000);
+      }, 500);
+    };
+  </script>
+</body>
+</html>

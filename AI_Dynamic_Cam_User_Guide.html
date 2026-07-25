@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Dynamic 3D Camera App & Neo Board — Quick Reference Manual</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600&display=swap');
+
+    @page {
+      size: A4;
+      margin: 12mm 12mm 12mm 12mm;
+      @bottom-right {
+        content: "Page " counter(page);
+        font-family: 'Inter', sans-serif;
+        font-size: 8pt;
+        color: #64748b;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #0f172a;
+      line-height: 1.45;
+      font-size: 9.5pt;
+      background: #ffffff;
+      margin: 0;
+      padding: 0;
+    }
+
+    .page-break {
+      page-break-after: always;
+      break-after: page;
+    }
+
+    /* Header Banner */
+    .header-banner {
+      background: linear-gradient(135deg, #090d16 0%, #1e1b4b 50%, #311042 100%);
+      color: #ffffff;
+      padding: 20px 24px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+
+    .header-badge {
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.3);
+      border: 1px solid rgba(129, 140, 248, 0.4);
+      color: #c7d2fe;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 8pt;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .header-title {
+      font-size: 20pt;
+      font-weight: 800;
+      margin: 0 0 6px 0;
+      line-height: 1.2;
+    }
+
+    .header-subtitle {
+      font-size: 10pt;
+      color: #cbd5e1;
+      margin: 0;
+    }
+
+    /* Section Styling */
+    .section {
+      margin-bottom: 18px;
+    }
+
+    h2 {
+      font-size: 12pt;
+      font-weight: 700;
+      color: #3730a3;
+      border-bottom: 2px solid #6366f1;
+      padding-bottom: 4px;
+      margin-top: 14px;
+      margin-bottom: 8px;
+    }
+
+    h3 {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+
+    p {
+      margin: 0 0 6px 0;
+    }
+
+    ul, ol {
+      margin: 0 0 8px 0;
+      padding-left: 18px;
+    }
+
+    li {
+      margin-bottom: 3px;
+    }
+
+    code {
+      font-family: 'Fira Code', monospace;
+      font-size: 8.5pt;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 1px 5px;
+      border-radius: 3px;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Callout Alert Boxes */
+    .callout {
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 10px 0;
+      font-size: 9pt;
+      page-break-inside: avoid;
+    }
+
+    .callout-important {
+      background: #fef2f2;
+      border-left: 4px solid #ef4444;
+      color: #991b1b;
+    }
+
+    .callout-info {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      color: #1e40af;
+    }
+
+    .callout-tip {
+      background: #f0fdf4;
+      border-left: 4px solid #22c55e;
+      color: #166534;
+    }
+
+    /* Table Styles */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+      font-size: 8.5pt;
+      page-break-inside: avoid;
+    }
+
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 8px;
+      text-align: left;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #1e293b;
+      font-weight: 700;
+    }
+
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    .shortcut-key {
+      display: inline-block;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-bottom: 2px solid #94a3b8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: 'Fira Code', monospace;
+      font-size: 8pt;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 8px 0;
+    }
+
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+
+    .card-title {
+      font-weight: 700;
+      color: #3730a3;
+      margin-bottom: 3px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER BANNER -->
+  <div class="header-banner">
+    <div class="header-badge">Quick Operations & Feature Manual</div>
+    <h1 class="header-title">AI Dynamic 3D Camera App & Neo Board</h1>
+    <p class="header-subtitle">Simple Step-by-Step Guide: App Usage, Features, Camera Ranges & Neo Board Execution</p>
+  </div>
+
+  <!-- SECTION 1: HOW TO USE THE APP -->
+  <div class="section">
+    <h2>1. How to Use the AI Dynamic Cam App (Step-by-Step)</h2>
+    
+    <ol>
+      <li><strong>Launch the App</strong>: Open <code>index.html</code> in Google Chrome or Microsoft Edge, or launch the installed desktop PWA.</li>
+      <li><strong>Import 3D Model</strong>: Drag & drop your <code>.glb</code> / <code>.gltf</code> 3D model into the landing drop zone (optionally attach background audio <code>.mp3</code>/<code>.wav</code> or camera JSON files). Click <strong>Enter Editor Workspace</strong>.</li>
+      <li><strong>Navigate 3D Viewport</strong>:
+        <ul>
+          <li><strong>Rotate / Orbit</strong>: Left-click and drag on the 3D viewport canvas.</li>
+          <li><strong>Pan Camera</strong>: Right-click and drag (or <span class="shortcut-key">Shift</span> + Left-click and drag).</li>
+          <li><strong>Zoom In / Out</strong>: Scroll mouse wheel up / down.</li>
+          <li><strong>Fit / Reset View</strong>: Press <span class="shortcut-key">F</span> to fit model to screen; press <span class="shortcut-key">R</span> to reset camera view.</li>
+        </ul>
+      </li>
+      <li><strong>Add Timeline Keyframes</strong>:
+        <ul>
+          <li>Scrub the timeline playhead to any frame (0 to 1000).</li>
+          <li>Position the camera pose in the viewport and press <span class="shortcut-key">K</span> (or click <strong>+ Keyframe</strong>).</li>
+          <li>Press <span class="shortcut-key">Space</span> to Play / Pause timeline animation playback.</li>
+          <li>Press <span class="shortcut-key">Shift + K</span> to delete the keyframe at the current playhead frame.</li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+
+  <!-- SECTION 2: KEY FEATURES -->
+  <div class="section">
+    <h2>2. Key Features Overview</h2>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">🤖 AI Camera Director</div>
+        <p>Type natural prompts (e.g. <em>"Hero push in with 35mm lens"</em>) or pick motion archetypes (<em>Hero Push</em>, <em>Wide Establish</em>, <em>Close Detail</em>, <em>Orbit Sweep</em>, <em>Spiraling Reveal</em>).</p>
+      </div>
+      <div class="card">
+        <div class="card-title">📷 Lens Focal Length (mm)</div>
+        <p>Adjust focal length from <code>1mm</code> to <code>120mm</code>. Quick presets: <code>24mm</code> (wide), <code>35mm</code> (natural), <code>50mm</code> (standard), <code>85mm</code> (detail portrait).</p>
+      </div>
+      <div class="card">
+        <div class="card-title">🎬 Handheld Shake & Audio Sync</div>
+        <p>Apply procedural shake profiles (<em>Continuous Handheld</em>, <em>Impact Drop</em>, <em>Erratic Rumbling</em>) synced with audio track waveform scrubbing.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">💾 Project Export / Import</div>
+        <p>Export clean keyframe arrays for Three.js/Blender or download full project <code>.json</code> files containing all paths, hotspots, and settings.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- SECTION 3: CAMERA RANGES (CORE FOCUS) -->
+  <div class="section">
+    <h2>3. Camera Ranges: Restricting Dynamic Camera Motion</h2>
+
+    <div class="callout callout-important">
+      <strong>🎯 Core Purpose of Camera Ranges:</strong><br>
+      If you do <strong>NOT</strong> want dynamic camera motion active across the entire 3D model, you can create specific <strong>Camera Ranges</strong>.<br>
+      Dynamic camera motion will take effect <strong>ONLY inside the added Camera Ranges</strong> in Neo Board. Outside of these added range blocks, the camera stays steady in a fixed static pose. This allows Neo Board text banners, product specifications, and callouts to display cleanly without unwanted camera movement across the full model!
+    </div>
+
+    <h3>How to Add & Configure Camera Ranges (Step-by-Step):</h3>
+    <ol>
+      <li>Identify the specific frame window where you WANT dynamic camera motion on your model (e.g. Frame 60 to Frame 180 for a 360° product sweep).</li>
+      <li>Open the <strong>Camera Ranges</strong> panel in the right drawer inspector.</li>
+      <li>Click <strong>+ Add Range</strong> to open the inline range editor form.</li>
+      <li>Enter your <strong>Start Frame</strong> (e.g. <code>60</code>) and <strong>End Frame</strong> (e.g. <code>180</code>).</li>
+      <li>Configure <strong>Dynamic Tracking Mode</strong>:
+        <ul>
+          <li><strong>Checked (`dynamic: true`)</strong>: Dynamic camera motion takes effect <strong>ONLY inside this range</strong> in Neo Board.</li>
+          <li><strong>Unchecked (`dynamic: false`)</strong>: Locks to a fixed static 3D pose, keeping the viewport steady outside dynamic zones.</li>
+        </ul>
+      </li>
+      <li>Click <strong>Save</strong>. (You can also click directly on empty timeline track lane space to spawn a range block or toggle dynamic mode).</li>
+    </ol>
+
+    <h3>How to Edit an Existing Camera Range:</h3>
+    <ul>
+      <li><strong>Click Edit on Range Item</strong>: In the Camera Ranges list, click the <strong>Edit</strong> button next to any saved range.</li>
+      <li><strong>Modify Settings</strong>: The form opens in <strong>Edit Range</strong> mode pre-populated with that range's Start Frame, End Frame, Dynamic Tracking checkbox, and Static pose values.</li>
+      <li><strong>Save Changes</strong>: Adjust any parameters and click <strong>Save</strong> to update that specific camera range in real time!</li>
+    </ul>
+  </div>
+
+  <!-- SECTION 4: WHAT HAPPENS IN NEO BOARD? -->
+  <div class="section">
+    <h2>4. What Effect Happens in Neo Board?</h2>
+
+    <p><strong>Neo Board</strong> is the app's integrated presentation overlay HUD system (<code>.neo-overlay</code>, <code>.neo-badge</code>, <code>.neo-title</code>, <code>.neo-desc</code>, <code>.neo-tags</code>).</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Camera Range Mode</th>
+          <th>3D Viewport Motion</th>
+          <th>Neo Board Overlay Effect</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Inside Added Camera Range<br><code>(dynamic: true)</code></strong></td>
+          <td>Camera actively orbits, dollies, or sweeps along calculated 3D spline curves.</td>
+          <td>Displays active real-time motion badges (e.g., <em>"DYNAMIC SWEEP"</em>) and updates spatial context tags dynamically as the camera sweeps.</td>
+        </tr>
+        <tr>
+          <td><strong>Outside Added Camera Range<br><code>(dynamic: false)</code></strong></td>
+          <td>Camera motion is frozen; holds exact static orientation (Yaw, Pitch, Radius, Target XYZ, 0 Shake).</td>
+          <td><strong>Freezes viewport movement</strong> so viewers can comfortably read title cards, specs, and text callouts without camera jitter or motion blur.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-tip">
+      <strong>Pro Tip:</strong> Add Dynamic Camera Ranges only on segments where you need active 3D camera sweeps, and leave static callout segments un-ranged so text stays steady!
+    </div>
+  </div>
+
+  <!-- SECTION 5: SHORTCUTS -->
+  <div class="section">
+    <h2>5. Keyboard Shortcuts Quick Reference</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="shortcut-key">Space</span></td>
+          <td>Play / Pause timeline animation playback</td>
+        </tr>
+        <tr>
+          <td><span class="shortcut-key">K</span></td>
+          <td>Insert keyframe at active playhead frame</td>
+        </tr>
+        <tr>
+          <td><span class="shortcut-key">Shift + K</span></td>
+          <td>Delete keyframe at active playhead frame</td>
+        </tr>
+        <tr>
+          <td><span class="shortcut-key">Left</span> / <span class="shortcut-key">Right</span></td>
+          <td>Step playhead 1 frame backward / forward</td>
+        </tr>
+        <tr>
+          <td><span class="shortcut-key">P</span></td>
+          <td>Toggle Preview Mode (hides drawer UI for clean presentation)</td>
+        </tr>
+        <tr>
+          <td><span class="shortcut-key">F</span></td>
+          <td>Fit 3D model geometry to viewport center</td>
+        </tr>
+        <tr>
+          <td><span class="shortcut-key">R</span></td>
+          <td>Reset camera view to default orientation</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>
