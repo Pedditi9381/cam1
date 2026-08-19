@@ -1,4 +1,4 @@
-const APP_VERSION = "v2.1.2";
+const APP_VERSION = "v2.3";
 const modelViewer = document.querySelector("#modelViewer");
 const importScreen = document.querySelector("#importScreen");
 const statusText = document.querySelector("#statusText");
@@ -428,22 +428,26 @@ function readCameraTarget(raw) {
   );
 }
 
-function readFrameTime(raw, index, totalDuration) {
-  if (raw.frame !== undefined || raw.frameNumber !== undefined || raw.frameIndex !== undefined) {
-    const rawVal = parseNumber(raw.frame ?? raw.frameNumber ?? raw.frameIndex, 0);
-    const frame = rawVal > 0 ? rawVal - 1 : 0;
-    return frame / state.fps;
+function readFrameTime(raw, index, totalDuration, options = {}) {
+  const hasTime = raw.time !== undefined || raw.seconds !== undefined || raw.t !== undefined;
+  if (hasTime) {
+    const timeVal = parseNumber(raw.time ?? raw.seconds ?? raw.t, NaN);
+    if (Number.isFinite(timeVal)) return timeVal;
   }
 
-  if (raw.time !== undefined || raw.seconds !== undefined || raw.t !== undefined) {
-    return parseNumber(raw.time ?? raw.seconds ?? raw.t, 0);
+  const hasFrame = raw.frame !== undefined || raw.frameNumber !== undefined || raw.frameIndex !== undefined;
+  if (hasFrame) {
+    const rawVal = parseNumber(raw.frame ?? raw.frameNumber ?? raw.frameIndex, 0);
+    const isZeroIndexed = options.isZeroIndexed === true || rawVal === 0;
+    const frame = isZeroIndexed ? rawVal : Math.max(rawVal - 1, 0);
+    return frame / state.fps;
   }
 
   const progressFallback = totalDuration > 0 ? index / Math.max(totalDuration - 1, 1) : 0;
   return progressFallback * state.duration;
 }
 
-function normalizeKeyframe(raw, index, totalDuration) {
+function normalizeKeyframe(raw, index, totalDuration, options = {}) {
   if (raw.properties) {
     const props = raw.properties;
     const target = {
@@ -451,14 +455,18 @@ function normalizeKeyframe(raw, index, totalDuration) {
       y: parseNumber(Array.isArray(props.targetY) ? props.targetY[0] : props.targetY, state.defaultCamera.target.y),
       z: parseNumber(Array.isArray(props.targetZ) ? props.targetZ[0] : props.targetZ, state.defaultCamera.target.z),
     };
+    const yawProp = Array.isArray(props.theta) ? props.theta[0] : (props.theta ?? props.yaw ?? props.azimuth);
+    const pitchProp = Array.isArray(props.phi) ? props.phi[0] : (props.phi ?? props.pitch ?? props.polar);
+    const radiusProp = Array.isArray(props.radius) ? props.radius[0] : (props.radius ?? props.distance);
+
     const orbit = {
-      yaw: parseNumber(Array.isArray(props.theta) ? props.theta[0] : props.theta, state.defaultCamera.orbit.yaw),
-      pitch: parseNumber(Array.isArray(props.phi) ? props.phi[0] : props.phi, state.defaultCamera.orbit.pitch),
-      radius: Math.max(parseNumber(Array.isArray(props.radius) ? props.radius[0] : props.radius, state.defaultCamera.orbit.radius), 0.01),
+      yaw: parseNumber(yawProp, state.defaultCamera.orbit.yaw),
+      pitch: parseNumber(pitchProp, state.defaultCamera.orbit.pitch),
+      radius: Math.max(parseNumber(radiusProp, state.defaultCamera.orbit.radius), 0.01),
     };
     const fov = parseNumber(Array.isArray(props.fov) ? props.fov[0] : props.fov, state.defaultCamera.fov);
     const lens = fovToLens(fov);
-    const time = readFrameTime(raw, index, totalDuration);
+    const time = readFrameTime(raw, index, totalDuration, options);
 
     return {
       time,
@@ -475,6 +483,10 @@ function normalizeKeyframe(raw, index, totalDuration) {
   const target = readCameraTarget(raw);
   let orbit;
 
+  const hasRootOrbit = raw.yaw !== undefined || raw.pitch !== undefined || raw.radius !== undefined
+    || raw.azimuth !== undefined || raw.polar !== undefined || raw.distance !== undefined
+    || raw.theta !== undefined || raw.phi !== undefined;
+
   if (raw.orbit || raw.cameraOrbit) {
     const source = raw.orbit ?? raw.cameraOrbit;
     orbit = {
@@ -489,6 +501,20 @@ function normalizeKeyframe(raw, index, totalDuration) {
           ? parseNumber(source.polar, state.defaultCamera.orbit.pitch)
           : normalizeAngleDegrees(source.phi, state.defaultCamera.orbit.pitch),
       radius: Math.max(parseNumber(source.radius ?? source.distance, state.defaultCamera.orbit.radius), 0.01),
+    };
+  } else if (hasRootOrbit) {
+    orbit = {
+      yaw: raw.yaw !== undefined
+        ? parseNumber(raw.yaw, state.defaultCamera.orbit.yaw)
+        : raw.azimuth !== undefined
+          ? parseNumber(raw.azimuth, state.defaultCamera.orbit.yaw)
+          : normalizeAngleDegrees(raw.theta, state.defaultCamera.orbit.yaw),
+      pitch: raw.pitch !== undefined
+        ? parseNumber(raw.pitch, state.defaultCamera.orbit.pitch)
+        : raw.polar !== undefined
+          ? parseNumber(raw.polar, state.defaultCamera.orbit.pitch)
+          : normalizeAngleDegrees(raw.phi, state.defaultCamera.orbit.pitch),
+      radius: Math.max(parseNumber(raw.radius ?? raw.distance, state.defaultCamera.orbit.radius), 0.01),
     };
   } else if (raw.rotation || raw.cameraRotation || raw.euler) {
     const source = raw.rotation ?? raw.cameraRotation ?? raw.euler;
@@ -513,7 +539,7 @@ function normalizeKeyframe(raw, index, totalDuration) {
     orbit = positionToOrbit(position, target);
   }
 
-  const time = readFrameTime(raw, index, totalDuration);
+  const time = readFrameTime(raw, index, totalDuration, options);
 
   return {
     time,
@@ -538,8 +564,9 @@ function extractCameraFrames(json) {
 }
 
 function setKeyframes(rawFrames, duration) {
+  const hasZeroFrame = rawFrames.some(f => (f?.frame === 0 || f?.frameNumber === 0 || f?.frameIndex === 0));
   const frames = rawFrames
-    .map((frame, index) => normalizeKeyframe(frame, index, rawFrames.length))
+    .map((frame, index) => normalizeKeyframe(frame, index, rawFrames.length, { isZeroIndexed: hasZeroFrame }))
     .sort((a, b) => a.time - b.time);
 
   state.keyframes = frames;
@@ -1343,9 +1370,9 @@ function applyCamera(frame, options = {}) {
     targetY += targetNoiseY;
   }
 
-  const previewFactor = 1;
-  state.exportZoomPreviewFactor = 1;
-  const displayRadius = frame.orbit.radius;
+  const previewFactor = getExportPreviewZoomFactor();
+  state.exportZoomPreviewFactor = previewFactor;
+  const displayRadius = Math.max(frame.orbit.radius * previewFactor, 0.01);
 
   modelViewer.cameraOrbit = `${yaw.toFixed(2)}deg ${pitch.toFixed(2)}deg ${displayRadius.toFixed(3)}m`;
   modelViewer.cameraTarget = `${targetX.toFixed(3)}m ${targetY.toFixed(3)}m ${frame.target.z.toFixed(3)}m`;
@@ -1977,10 +2004,21 @@ function interpolateFrame(time) {
   const range = state.cameraRanges ? state.cameraRanges.find(r => currentFrameNumber >= r.startFrame && currentFrameNumber <= r.endFrame) : null;
   if (range && !range.dynamic) {
     const lensValue = range.lens || 29;
+    const safeOrbit = range.orbit ? {
+      yaw: parseNumber(range.orbit.yaw, state.defaultCamera.orbit.yaw),
+      pitch: parseNumber(range.orbit.pitch, state.defaultCamera.orbit.pitch),
+      radius: parseNumber(range.orbit.radius, state.defaultCamera.orbit.radius),
+    } : { ...state.defaultCamera.orbit };
+    const safeTarget = range.target ? {
+      x: parseNumber(range.target.x, state.defaultCamera.target.x),
+      y: parseNumber(range.target.y, state.defaultCamera.target.y),
+      z: parseNumber(range.target.z, state.defaultCamera.target.z),
+    } : { ...state.defaultCamera.target };
+
     return {
       time,
-      orbit: { ...range.orbit },
-      target: { ...range.target },
+      orbit: safeOrbit,
+      target: safeTarget,
       fov: lensToFov(lensValue),
       lens: lensValue,
       shake: 0,
@@ -2839,26 +2877,34 @@ function getExportCompensationScale() {
   return clamp(parseNumber(inputs.exportCompensation?.value, 0), -50, 100) / 100;
 }
 
+function getExportCompensationFactor() {
+  const scale = getExportCompensationScale();
+  return Math.max(0.05, 1 + scale);
+}
+
 function getExportCompensationLabel(value = inputs.exportCompensation?.value) {
   const percent = clamp(parseNumber(value, 0), -50, 100);
-  if (percent > 0) return `Zoom in +${percent.toFixed(0)}%`;
-  if (percent < 0) return `Zoom out ${percent.toFixed(0)}%`;
+  if (percent > 0) return `Zoom out +${percent.toFixed(0)}%`;
+  if (percent < 0) return `Zoom in ${percent.toFixed(0)}%`;
   return "No zoom offset";
 }
 
 function getExportPreviewZoomFactor() {
-  const scale = getExportCompensationScale();
-  return Math.max(0.1, 1 / (1 + scale));
+  return getExportCompensationFactor();
 }
 
-const NEOBOARD_RADIUS_SCALE = 5.55;
+const NEOBOARD_RADIUS_SCALE = 1.0;
 
 function getNeoboardExportRadius(radius) {
   const sourceRadius = Math.max(parseNumber(radius, state.defaultCamera.orbit.radius), 0.01);
-  const unitScale = sourceRadius < 20 ? NEOBOARD_RADIUS_SCALE : 1;
-  const scale = getExportCompensationScale();
-  const compensationScale = 1 / (1 + scale);
-  return sourceRadius * unitScale * compensationScale;
+  const factor = getExportCompensationFactor();
+  return sourceRadius * NEOBOARD_RADIUS_SCALE * factor;
+}
+
+function getNeoboardExportFov(fov) {
+  const sourceFov = clamp(parseNumber(fov, state.defaultCamera.fov), 1, 175);
+  const factor = getExportCompensationFactor();
+  return clamp(sourceFov * factor, 1, 175);
 }
 
 function getCameraDelta(from, to) {
@@ -2942,18 +2988,27 @@ function getExportHoldWarnings(frames) {
 
 function compensateFrameForExport(frame) {
   const exportedFrame = cloneKeyframe(frame);
+  const compRadius = getNeoboardExportRadius(exportedFrame.orbit.radius);
+  const compFov = getNeoboardExportFov(exportedFrame.fov);
+  const compLens = fovToLens(compFov);
+
   exportedFrame.orbit = {
     ...exportedFrame.orbit,
-    radius: getNeoboardExportRadius(exportedFrame.orbit.radius),
+    radius: compRadius,
   };
+  exportedFrame.fov = compFov;
+  exportedFrame.lens = compLens;
   return exportedFrame;
 }
 
 function compensateRangeForExport(range) {
-  const fovValue = lensToFov(range.lens || 29);
+  const baseFov = lensToFov(range.lens || 29);
+  const compFov = getNeoboardExportFov(baseFov);
+  const compLens = fovToLens(compFov);
   return {
     ...range,
-    fov: fovValue
+    fov: Number(compFov.toFixed(3)),
+    lens: Number(compLens.toFixed(1))
   };
 }
 
@@ -2970,8 +3025,12 @@ function exportCameraJson() {
       "warn",
     );
   }
+  const exportCompPercent = Number((getExportCompensationScale() * 100).toFixed(0));
+  const exportZoomFactor = Number(getExportCompensationFactor().toFixed(3));
+
   const referenceFrame = sortedFrames[0] ?? createCurrentKeyframe(getTimelineTime());
   const currentFrame = compensateFrameForExport(referenceFrame);
+  const refPos = orbitToPosition(currentFrame.orbit, currentFrame.target);
 
   const currentCameraState = {
     theta: Number(currentFrame.orbit.yaw.toFixed(3)),
@@ -2980,7 +3039,18 @@ function exportCameraJson() {
     targetX: Number(currentFrame.target.x.toFixed(3)),
     targetY: Number(currentFrame.target.y.toFixed(3)),
     targetZ: Number(currentFrame.target.z.toFixed(3)),
-    fov: Number(currentFrame.fov.toFixed(3))
+    fov: Number(currentFrame.fov.toFixed(3)),
+    lens: Number((currentFrame.lens ?? fovToLens(currentFrame.fov)).toFixed(1)),
+    position: {
+      x: Number(refPos.x.toFixed(3)),
+      y: Number(refPos.y.toFixed(3)),
+      z: Number(refPos.z.toFixed(3))
+    },
+    cameraOrbit: `${currentFrame.orbit.yaw.toFixed(2)}deg ${currentFrame.orbit.pitch.toFixed(2)}deg ${currentFrame.orbit.radius.toFixed(3)}m`,
+    cameraTarget: `${currentFrame.target.x.toFixed(3)}m ${currentFrame.target.y.toFixed(3)}m ${currentFrame.target.z.toFixed(3)}m`,
+    exportCompensation: exportCompPercent,
+    exportZoomMatch: exportCompPercent,
+    exportZoomFactor: exportZoomFactor
   };
 
   const keyframes = sortedFrames.map((sourceFrame, index) => {
@@ -2993,9 +3063,15 @@ function exportCameraJson() {
     const targetX = Number(frame.target.x.toFixed(3));
     const targetY = Number(frame.target.y.toFixed(3));
     const targetZ = Number(frame.target.z.toFixed(3));
+
+    const pos = orbitToPosition({ yaw, pitch, radius }, { x: targetX, y: targetY, z: targetZ });
+    const posX = Number(pos.x.toFixed(3));
+    const posY = Number(pos.y.toFixed(3));
+    const posZ = Number(pos.z.toFixed(3));
+
     const fovValue = Number.isFinite(parseNumber(frame.fov, NaN))
       ? frame.fov
-      : lensToFov(frame.lens ?? parseNumber(inputs.lens.value, 29));
+      : getNeoboardExportFov(lensToFov(frame.lens ?? parseNumber(inputs.lens.value, 29)));
     const fov = Number(fovValue.toFixed(3));
     const lens = Number((frame.lens ?? fovToLens(fov)).toFixed(1));
     const shake = Number((frame.shake ?? state.shakeIntensity).toFixed(3));
@@ -3004,6 +3080,14 @@ function exportCameraJson() {
       frame: frameNumber + 1,
       time: Number(exactTime.toFixed(6)),
       name: `Keyframe ${index + 1}`,
+      yaw,
+      pitch,
+      radius,
+      distance: radius,
+      zoom: Number(getExportCompensationFactor().toFixed(3)),
+      exportCompensation: exportCompPercent,
+      exportZoomMatch: exportCompPercent,
+      exportZoomFactor: exportZoomFactor,
       orbit: {
         yaw,
         pitch,
@@ -3014,6 +3098,11 @@ function exportCameraJson() {
         y: targetY,
         z: targetZ
       },
+      position: { x: posX, y: posY, z: posZ },
+      cameraPosition: { x: posX, y: posY, z: posZ },
+      eye: { x: posX, y: posY, z: posZ },
+      cameraOrbit: `${yaw}deg ${pitch}deg ${radius}m`,
+      cameraTarget: `${targetX}m ${targetY}m ${targetZ}m`,
       fov,
       lens,
       shake,
@@ -3024,7 +3113,11 @@ function exportCameraJson() {
         targetX: [targetX],
         targetY: [targetY],
         targetZ: [targetZ],
-        fov: [fov]
+        fov: [fov],
+        lens: [lens],
+        positionX: [posX],
+        positionY: [posY],
+        positionZ: [posZ]
       }
     };
   });
@@ -3035,20 +3128,38 @@ function exportCameraJson() {
       ...compRange.orbit,
       radius: getNeoboardExportRadius(compRange.orbit.radius)
     } : null;
+    let rangePos = null;
+    let rangeOrbitStr = null;
+    let rangeTargetStr = null;
+    if (compensatedOrbit && compRange.target) {
+      const p = orbitToPosition(compensatedOrbit, compRange.target);
+      rangePos = { x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)), z: Number(p.z.toFixed(3)) };
+      rangeOrbitStr = `${compensatedOrbit.yaw.toFixed(2)}deg ${compensatedOrbit.pitch.toFixed(2)}deg ${compensatedOrbit.radius.toFixed(3)}m`;
+      rangeTargetStr = `${compRange.target.x.toFixed(3)}m ${compRange.target.y.toFixed(3)}m ${compRange.target.z.toFixed(3)}m`;
+    }
     return {
       startFrame: compRange.startFrame,
       endFrame: compRange.endFrame,
       dynamic: compRange.dynamic,
       orbit: compensatedOrbit,
       target: compRange.target ? { ...compRange.target } : null,
+      position: rangePos,
+      cameraOrbit: rangeOrbitStr,
+      cameraTarget: rangeTargetStr,
       lens: compRange.lens,
       fov: Number(compRange.fov.toFixed(3))
     };
   }) : [];
 
   const data = {
+    app: "camera-animation-tool",
+    version: "2.3",
     duration: state.duration,
     fps: state.fps,
+    exportCompensation: exportCompPercent,
+    exportZoomMatch: exportCompPercent,
+    exportZoomFactor: exportZoomFactor,
+    zoom: exportZoomFactor,
     shakeEnabled: state.shakeEnabled,
     shakeIntensity: state.shakeIntensity,
     shakeSpeed: state.shakeSpeed,
@@ -3062,6 +3173,9 @@ function exportCameraJson() {
       autoKeyframe: false
     },
     cameraSettings: {
+      exportCompensation: exportCompPercent,
+      exportZoomMatch: exportCompPercent,
+      exportZoomFactor: exportZoomFactor,
       fovRange: {
         min: 1,
         max: 180
@@ -3078,12 +3192,14 @@ function exportCameraJson() {
       interpolationDecay: 100
     },
     metadata: {
-      version: "1.1",
+      version: "2.3",
       creator: "LearningPad 3D Web Camera Controls",
       timestamp: new Date().toISOString(),
       totalKeyframes: sortedFrames.length,
       exportRadiusScale: NEOBOARD_RADIUS_SCALE,
-      exportCompensation: Number((getExportCompensationScale() * 100).toFixed(0))
+      exportCompensation: exportCompPercent,
+      exportZoomMatch: exportCompPercent,
+      exportZoomFactor: exportZoomFactor
     }
   };
 
@@ -3122,7 +3238,7 @@ function downloadJson(data, filename) {
 function getWorkingFileData() {
   return {
     app: "camera-animation-tool",
-    version: 1,
+    version: "2.3",
     fps: state.fps,
     duration: state.duration,
     pausedAt: getTimelineTime(),
@@ -4725,7 +4841,10 @@ const exportCompensationReadout = document.querySelector("#exportCompensationRea
 if (inputs.exportCompensation && exportCompensationReadout) {
   exportCompensationReadout.textContent = getExportCompensationLabel();
   inputs.exportCompensation.addEventListener("input", () => {
-    exportCompensationReadout.textContent = getExportCompensationLabel(inputs.exportCompensation.value);
+    const val = inputs.exportCompensation.value;
+    exportCompensationReadout.textContent = getExportCompensationLabel(val);
+    state.exportZoomPreviewFactor = getExportPreviewZoomFactor();
+    seek(getTimelineTime());
   });
 }
 

@@ -2193,32 +2193,37 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .hotspot-annotation {
   position: absolute;
   transform: translate(-50%, -50%);
-  background: rgba(22, 28, 38, 0.85); /* Matches the image's dark slate blue-gray */
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--ink);
-  font-size: 12px;
+  background: rgba(43, 68, 91, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  color: #ffffff;
+  font-family: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13.5px;
   font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 6px;
+  letter-spacing: -0.01em;
+  padding: 7px 16px;
+  border-radius: 10px;
   white-space: nowrap;
   pointer-events: auto;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  box-shadow: none;
   opacity: 1;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .hotspot:hover .hotspot-annotation {
-  transform: translate(-50%, -50%) scale(1.05);
-  border-color: var(--accent);
-  background: rgba(30, 41, 59, 0.95);
-  box-shadow: 0 0 14px rgba(99, 102, 241, 0.3), 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%) scale(1.04);
+  border: none;
+  background: rgba(52, 82, 110, 0.7);
+  box-shadow: none;
 }
 
 .hotspot.active .hotspot-annotation {
-  transform: translate(-50%, -50%) scale(1.05);
-  border-color: var(--orange);
-  background: rgba(22, 28, 38, 0.95);
-  box-shadow: 0 0 14px rgba(249, 115, 22, 0.35), 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%) scale(1.04);
+  border: none;
+  background: rgba(43, 68, 91, 0.75);
+  box-shadow: none;
 }
 
 /* Unified Blender-like color pass */
@@ -2396,12 +2401,10 @@ button:hover,
   background: linear-gradient(180deg, #8fb8e8, #4f8fd6);
 }
 
-.hotspot-annotation,
-.hotspot.active .hotspot-annotation,
-.hotspot:hover .hotspot-annotation {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(38, 38, 38, 0.92);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
+.hotspot-annotation {
+  border: none;
+  background: rgba(43, 68, 91, 0.5);
+  box-shadow: none;
 }
 
 /* Easing Transition Editor Styles */
@@ -2602,29 +2605,34 @@ button:hover,
 }
 
 .ai-object-label-annotation {
-  background: rgba(15, 23, 42, 0.85) !important; /* Slate 900 */
-  border: 1px solid rgba(99, 102, 241, 0.3) !important; /* Light indigo */
-  color: #cbd5e1 !important; /* Slate 300 */
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  padding: 4px 8px !important;
-  border-radius: 4px !important;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
-  transition: all 0.15s ease-out !important;
+  background: rgba(43, 68, 91, 0.5) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: none !important;
+  color: #ffffff !important;
+  font-family: Inter, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.01em !important;
+  padding: 7px 16px !important;
+  border-radius: 10px !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7) !important;
+  box-shadow: none !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .hotspot.ai-object-label-hotspot:hover .ai-object-label-annotation {
-  border-color: rgba(99, 102, 241, 0.75) !important;
-  background: rgba(30, 41, 59, 0.95) !important;
+  border: none !important;
+  background: rgba(52, 82, 110, 0.7) !important;
   color: #ffffff !important;
-  transform: translate(-50%, -50%) scale(1.05) !important;
+  transform: translate(-50%, -50%) scale(1.04) !important;
 }
 
 .hotspot.ai-object-label-hotspot.selected .ai-object-label-annotation {
-  border-color: rgba(251, 146, 60, 0.85) !important; /* Orange */
-  background: rgba(251, 146, 60, 0.25) !important;
-  color: #fed7aa !important;
-  box-shadow: 0 0 12px rgba(251, 146, 60, 0.4) !important;
+  border: none !important;
+  background: rgba(43, 68, 91, 0.75) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .ai-example-chips {
