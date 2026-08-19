@@ -94,7 +94,9 @@ const buttons = {
   loopToggle: document.querySelector("#loopToggleButton"),
   rangesToggle: document.querySelector("#rangesToggleBtn"),
   firstFrame: document.querySelector("#firstFrameButton"),
+  prevFrame: document.querySelector("#prevFrameButton"),
   prevKeyframe: document.querySelector("#prevKeyframeButton"),
+  nextFrame: document.querySelector("#nextFrameButton"),
   nextKeyframe: document.querySelector("#nextKeyframeButton"),
   lastFrame: document.querySelector("#lastFrameButton"),
   exportJson: document.querySelector("#exportJsonButton"),
@@ -2637,6 +2639,38 @@ function seekToKeyframe(index) {
   setStatus(`Frame ${frameNumber}`);
 }
 
+function goToPrevKeyframe() {
+  if (!state.keyframes.length) {
+    setStatus("No keyframes available.", "warn");
+    return;
+  }
+  const currentTime = getTimelineTime();
+  const sorted = state.keyframes.map((kf, i) => ({ kf, i })).sort((a, b) => a.kf.time - b.kf.time);
+  const prevItems = sorted.filter(item => item.kf.time < currentTime - 0.001);
+  if (prevItems.length > 0) {
+    const targetItem = prevItems[prevItems.length - 1];
+    seekToKeyframe(targetItem.i);
+  } else {
+    seekToKeyframe(sorted[0].i);
+  }
+}
+
+function goToNextKeyframe() {
+  if (!state.keyframes.length) {
+    setStatus("No keyframes available.", "warn");
+    return;
+  }
+  const currentTime = getTimelineTime();
+  const sorted = state.keyframes.map((kf, i) => ({ kf, i })).sort((a, b) => a.kf.time - b.kf.time);
+  const nextItems = sorted.filter(item => item.kf.time > currentTime + 0.001);
+  if (nextItems.length > 0) {
+    const targetItem = nextItems[0];
+    seekToKeyframe(targetItem.i);
+  } else {
+    seekToKeyframe(sorted[sorted.length - 1].i);
+  }
+}
+
 function stepFrame(direction) {
   const currentFrame = getCurrentFrame(getTimelineTime());
   const increment = state.snapToFiveFrames ? 5 : 1;
@@ -4768,8 +4802,10 @@ buttons.snapToggle.addEventListener("click", () => {
 buttons.fit.addEventListener("click", fitModel);
 buttons.reset.addEventListener("click", resetCamera);
 buttons.firstFrame.addEventListener("click", () => goToFrame(0));
-buttons.prevKeyframe.addEventListener("click", () => stepFrame(-1));
-buttons.nextKeyframe.addEventListener("click", () => stepFrame(1));
+if (buttons.prevKeyframe) buttons.prevKeyframe.addEventListener("click", () => goToPrevKeyframe());
+if (buttons.prevFrame) buttons.prevFrame.addEventListener("click", () => stepFrame(-1));
+if (buttons.nextFrame) buttons.nextFrame.addEventListener("click", () => stepFrame(1));
+if (buttons.nextKeyframe) buttons.nextKeyframe.addEventListener("click", () => goToNextKeyframe());
 buttons.lastFrame.addEventListener("click", () => goToFrame(getTotalFrames()));
 buttons.exportJson.addEventListener("click", exportCameraJson);
 buttons.saveProject.addEventListener("click", saveWorkingFile);
@@ -5045,10 +5081,18 @@ window.addEventListener("keydown", (event) => {
       togglePlayback();
     } else if (event.code === "ArrowLeft") {
       event.preventDefault();
-      stepFrame(-1);
+      if (event.shiftKey) {
+        goToPrevKeyframe();
+      } else {
+        stepFrame(-1);
+      }
     } else if (event.code === "ArrowRight") {
       event.preventDefault();
-      stepFrame(1);
+      if (event.shiftKey) {
+        goToNextKeyframe();
+      } else {
+        stepFrame(1);
+      }
     } else if (event.code === "Delete" || event.code === "Backspace") {
       if (state.isMouseOverTimeline) {
         event.preventDefault();

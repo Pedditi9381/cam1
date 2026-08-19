@@ -1580,6 +1580,15 @@ input[type="range"]::-webkit-slider-thumb:hover {
   color: #fff;
 }
 
+.transport-controls .keyframe-jump-btn {
+  color: #e2e8f0;
+}
+
+.transport-controls .keyframe-jump-btn:hover {
+  background: rgba(251, 146, 60, 0.22);
+  color: #fed7aa;
+}
+
 .magnet-toggle {
   display: inline-grid;
   place-items: center;

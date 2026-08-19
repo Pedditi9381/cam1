@@ -171,8 +171,12 @@
                   <dl class="help-shortcuts">
                     <div><dt>Space</dt><dd>Play or pause timeline</dd></div>
                     <div><dt>Left / Right</dt><dd>Move one frame back or forward</dd></div>
+                    <div><dt>Shift + Left / Right</dt><dd>Jump to previous or next keyframe</dd></div>
+                    <div><dt>Home / End</dt><dd>Jump to first or last frame</dd></div>
                     <div><dt>K</dt><dd>Add or replace keyframe at current frame</dd></div>
+                    <div><dt>A</dt><dd>Toggle auto-keyframe recording</dd></div>
                     <div><dt>Delete</dt><dd>Delete selected keyframe</dd></div>
+                    <div><dt>Ctrl + C / V</dt><dd>Copy or paste keyframe</dd></div>
                     <div><dt>D</dt><dd>Show or hide timeline</dd></div>
                     <div><dt>F</dt><dd>Fit model to screen</dd></div>
                     <div><dt>Ctrl + I</dt><dd>Open import menu at mouse position</dd></div>
@@ -195,8 +199,8 @@
                   <ul class="help-list">
                     <li>Dots are camera keyframes. Click a dot to jump to that frame.</li>
                     <li>Drag keyframes to move them. Use copy, paste, and delete in the timeline bar.</li>
+                    <li>Use transport buttons: first frame (|<), prev keyframe (◆<), prev frame (<), play, next frame (>), next keyframe (>◆), last frame (>|).</li>
                     <li>Enable the magnet to snap the time slider to multiples of 5 frames.</li>
-                    <li>Use the transport buttons for first, previous, play, next, and last frame.</li>
                   </ul>
                 </section>
               </div>
@@ -269,17 +273,23 @@
 
             <div class="timeline-header-center">
               <div class="transport-controls" aria-label="Timeline transport controls">
-                <button id="firstFrameButton" class="icon-button-sq" type="button" title="Go to first frame">
+                <button id="firstFrameButton" class="icon-button-sq" type="button" title="Go to first frame (Home)">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>
                 </button>
-                <button id="prevKeyframeButton" class="icon-button-sq" type="button" title="Previous frame">
+                <button id="prevKeyframeButton" class="icon-button-sq keyframe-jump-btn" type="button" title="Jump to previous keyframe (Shift+Left)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L15 12L9 20L3 12Z" fill="currentColor"></path><polyline points="20 18 14 12 20 6" stroke-width="2.5"></polyline></svg>
+                </button>
+                <button id="prevFrameButton" class="icon-button-sq" type="button" title="Step backward 1 frame (Left Arrow)">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 </button>
-                <button id="timelineToggleButton" class="icon-button play-icon" type="button" title="Play or pause timeline" aria-label="Play timeline"></button>
-                <button id="nextKeyframeButton" class="icon-button-sq" type="button" title="Next frame">
+                <button id="timelineToggleButton" class="icon-button play-icon" type="button" title="Play or pause timeline (Space)" aria-label="Play timeline"></button>
+                <button id="nextFrameButton" class="icon-button-sq" type="button" title="Step forward 1 frame (Right Arrow)">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </button>
-                <button id="lastFrameButton" class="icon-button-sq" type="button" title="Go to last frame">
+                <button id="nextKeyframeButton" class="icon-button-sq keyframe-jump-btn" type="button" title="Jump to next keyframe (Shift+Right)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 18 10 12 4 6" stroke-width="2.5"></polyline><path d="M15 4L21 12L15 20L9 12Z" fill="currentColor"></path></svg>
+                </button>
+                <button id="lastFrameButton" class="icon-button-sq" type="button" title="Go to last frame (End)">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>
                 </button>
               </div>
